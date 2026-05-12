@@ -12,6 +12,7 @@ import { el } from "./ui.js";
 import { InkCanvas } from "./canvas.js";
 import { store } from "./store.js";
 import { sync } from "./sync.js";
+import { cloudWriteRecord } from "./cloud.js";
 
 export function renderSlide({ root, slide, lesson, session, scope, scopeId, readOnly, onChange }) {
   root.innerHTML = "";
@@ -136,6 +137,14 @@ export function renderSlide({ root, slide, lesson, session, scope, scopeId, read
     store.set(s => s);
     sync.emit({ type: "render-tick" });
     onChange && onChange();
+    // Cloud (best-effort, no-op if Supabase 비활성)
+    if (session && scope !== "edit" && scope !== "ppt") {
+      const payload = pathFor();
+      cloudWriteRecord(session.id, slide.id, scope, scope === "whole" ? null : scopeId, {
+        strokes: payload.strokes || [],
+        texts: payload.texts || [],
+      }).catch(() => {});
+    }
   }
 
   // expose to caller

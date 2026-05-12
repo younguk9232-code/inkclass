@@ -80,7 +80,7 @@ async function pullSnapshot() {
     }
   });
   store.set(s => {
-    s.teachers = (teachers || []).map(t => ({ id: t.id, name: t.name, password: "" /* not synced */ }));
+    s.teachers = (teachers || []).map(t => ({ id: t.id, name: t.name, password: "" /* not synced */, joinCode: t.join_code || null }));
     s.students = (students || []).map(x => ({ id: x.id, grade: x.grade, classNum: x.class_num, num: x.num, name: x.name }));
     s.lessons = [...lessonMap.values()];
     s.sessions = [...sessionMap.values()];
@@ -107,7 +107,9 @@ function refresh() {
 // ── Write helpers (best-effort, no-op if cloud disabled) ──
 export async function cloudUpsertTeacher(t) {
   if (!isCloud) return t;
-  const { data } = await supa.from("teachers").upsert({ id: t.id, name: t.name, password_hash: await sha(t.password || "") }, { onConflict: "id" }).select().single();
+  const payload = { id: t.id, name: t.name, password_hash: await sha(t.password || "") };
+  if (t.joinCode) payload.join_code = t.joinCode;
+  const { data } = await supa.from("teachers").upsert(payload, { onConflict: "id" }).select().single();
   return data || t;
 }
 export async function cloudUpsertStudent(s) {

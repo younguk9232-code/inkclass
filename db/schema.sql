@@ -8,8 +8,14 @@ create table if not exists teachers (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   password_hash text not null,
+  join_code text unique,
   created_at timestamptz not null default now()
 );
+-- 이미 테이블이 존재하던 환경에서도 컬럼 보장
+alter table teachers add column if not exists join_code text;
+do $$ begin
+  create unique index teachers_join_code_uk on teachers(join_code);
+exception when duplicate_table then null; when duplicate_object then null; end $$;
 
 -- ── Students ────────────────────────────────────────────────
 create table if not exists students (
@@ -95,6 +101,10 @@ begin
     begin execute 'alter publication supabase_realtime add table sessions'; exception when others then null; end;
     begin execute 'alter publication supabase_realtime add table slide_records'; exception when others then null; end;
     begin execute 'alter publication supabase_realtime add table session_participants'; exception when others then null; end;
+    begin execute 'alter publication supabase_realtime add table teachers'; exception when others then null; end;
+    begin execute 'alter publication supabase_realtime add table students'; exception when others then null; end;
+    begin execute 'alter publication supabase_realtime add table lessons'; exception when others then null; end;
+    begin execute 'alter publication supabase_realtime add table slides'; exception when others then null; end;
   end if;
 end$$;
 

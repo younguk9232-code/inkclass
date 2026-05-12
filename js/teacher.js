@@ -4,6 +4,7 @@ import { store, getActiveSession, findLesson, findSession, studentLabel } from "
 import { sync } from "./sync.js";
 import { go } from "./router.js";
 import { renderSlide } from "./lesson-view.js";
+import { cloudInsertLesson, cloudUpsertSession } from "./cloud.js";
 
 const TOOLS = [
   { id: "pen", label: "펜", icon: "M3 17l3.6-1 9.5-9.5a2 2 0 0 0-2.8-2.8L3.8 13.2 3 17z" },
@@ -84,12 +85,9 @@ function createLesson(teacher) {
   const title = prompt("수업 자료 이름을 입력하세요", "새 수업");
   if (!title) return;
   const id = store.newId("lesson");
-  store.set(s => {
-    s.lessons.push({
-      id, teacherId: teacher.id, title, createdAt: Date.now(),
-      slides: [makeBlankSlide()],
-    });
-  });
+  const lesson = { id, teacherId: teacher.id, title, createdAt: Date.now(), slides: [makeBlankSlide()] };
+  store.set(s => { s.lessons.push(lesson); });
+  cloudInsertLesson(lesson).catch(() => {});
   openEditor(id);
 }
 
@@ -143,14 +141,14 @@ function importDialog(teacher) {
           const gs = body.querySelector("#imp-gs").value.trim();
           if (gs) {
             const id = store.newId("lesson");
-            store.set(s => {
-              s.lessons.push({
-                id, teacherId: teacher.id,
-                title: "Google Slides 연동",
-                createdAt: Date.now(),
-                slides: [{ id: store.newId("slide"), bg: null, gsEmbed: gs, mode: "none", strokes: [], texts: [] }],
-              });
-            });
+            const lesson = {
+              id, teacherId: teacher.id,
+              title: "Google Slides 연동",
+              createdAt: Date.now(),
+              slides: [{ id: store.newId("slide"), bg: null, gsEmbed: gs, mode: "none", strokes: [], texts: [] }],
+            };
+            store.set(s => { s.lessons.push(lesson); });
+            cloudInsertLesson(lesson).catch(() => {});
             close(); openEditor(id); return;
           }
           if (!f) { close(); return; }
@@ -169,6 +167,8 @@ function importDialog(teacher) {
               slides,
             });
           });
+          const lesson = store.state.lessons.find(l => l.id === id);
+          if (lesson) cloudInsertLesson(lesson).catch(() => {});
           close();
           openEditor(id);
         } },
@@ -468,25 +468,37 @@ function startLessonDialog(lesson, teacher) {
       { label: "취소", onClick: (close) => close() },
       { label: "수업 시작", primary: true, onClick: (close) => {
           // close any other live session for this teacher
+          const newSession = {
+            id: store.newId("sess"),
+            lessonId: lesson.id,
+            teacherId: teacher.id,
+            title: lesson.title,
+            status: "live",
+            flow,
+            currentSlide: 0,
+            startedAt: Date.now(),
+            endedAt: null,
+            participants: [],
+            groups: [],
+            records: {},
+            slidesSnapshot: JSON.parse(JSON.stringify(lesson.slides)),
+          };
+          const stoppedIds = [];
           store.set(s => {
-            s.sessions.forEach(ss => { if (ss.teacherId === teacher.id && ss.status === "live") ss.status = "stopped"; });
-            const session = {
-              id: store.newId("sess"),
-              lessonId: lesson.id,
-              teacherId: teacher.id,
-              title: lesson.title,
-              status: "live",
-              flow,
-              currentSlide: 0,
-              startedAt: Date.now(),
-              endedAt: null,
-              participants: [],
-              groups: [],
-              records: {},
-              slidesSnapshot: JSON.parse(JSON.stringify(lesson.slides)), // freeze slide content
-            };
-            s.sessions.push(session);
+            s.sessions.forEach(ss => {
+              if (ss.teacherId === teacher.id && ss.status === "live") {
+                ss.status = "stopped"; ss.endedAt = Date.now();
+                stoppedIds.push(ss.id);
+              }
+            });
+            s.sessions.push(newSession);
           });
+          // Cloud sync
+          stoppedIds.forEach(sid => {
+            const ss = store.state.sessions.find(x => x.id === sid);
+            if (ss) cloudUpsertSession(ss).catch(() => {});
+          });
+          cloudUpsertSession(newSession).catch(() => {});
           sync.emit({ type: "session-start" });
           close();
           go("/teacher/live");
@@ -613,12 +625,14 @@ function liveClass(wrap, session, teacher) {
   function navigate(d) {
     session.currentSlide = Math.max(0, Math.min(session.slidesSnapshot.length - 1, session.currentSlide + d));
     store.set(s => s);
+    cloudUpsertSession(session).catch(() => {});
     sync.emit({ type: "slide-change" });
     rerender();
   }
   function switchFlow(f) {
     session.flow = f;
     store.set(s => s);
+    cloudUpsertSession(session).catch(() => {});
     sync.emit({ type: "flow-change" });
     rerender();
   }
@@ -687,6 +701,7 @@ function enterFocusMode(session, teacher) {
   function nav(d) {
     session.currentSlide = Math.max(0, Math.min(session.slidesSnapshot.length - 1, session.currentSlide + d));
     store.set(s => s);
+    cloudUpsertSession(session).catch(() => {});
     sync.emit({ type: "slide-change" });
     render();
   }
@@ -1041,6 +1056,7 @@ function completeSession(session, status) {
   session.status = status;
   session.endedAt = Date.now();
   store.set(s => s);
+  cloudUpsertSession(session).catch(() => {});
   sync.emit({ type: "session-end" });
 }
 
@@ -1107,6 +1123,10 @@ function restartSession(session) {
       target.status = "live";
       target.endedAt = null;
     }
+  });
+  // Cloud sync
+  store.state.sessions.filter(ss => ss.teacherId === session.teacherId).forEach(ss => {
+    cloudUpsertSession(ss).catch(() => {});
   });
   sync.emit({ type: "session-restart" });
   go("/teacher/live");

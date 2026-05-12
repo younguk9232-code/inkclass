@@ -4,7 +4,7 @@ import { mount, template, $, $$ } from "./ui.js";
 import { store } from "./store.js";
 import { teacherDashboard, editorView } from "./teacher.js";
 import { studentDashboard, studentLive } from "./student.js";
-import { initCloud, cloudEnabled } from "./cloud.js";
+import { initCloud, cloudEnabled, cloudUpsertTeacher, cloudUpsertStudent, cloudAddParticipant } from "./cloud.js";
 
 // Kick off cloud sync (no-op if env not configured)
 initCloud().then(ok => {
@@ -43,6 +43,7 @@ route("/teacher-login", () => {
     if (!t) {
       t = { id: store.newId("t"), name, password: pw, joinCode: store.newJoinCode() };
       store.set(s => s.teachers.push(t));
+      cloudUpsertTeacher(t).catch(() => {});
     } else if (t.password !== pw) {
       err.textContent = "비밀번호가 일치하지 않습니다.";
       return;
@@ -52,6 +53,8 @@ route("/teacher-login", () => {
         const x = s.teachers.find(y => y.id === t.id);
         if (x && !x.joinCode) x.joinCode = store.newJoinCode();
       });
+      const updated = store.state.teachers.find(x => x.id === t.id);
+      cloudUpsertTeacher(updated).catch(() => {});
     }
     store.set(s => s.whoTeacher = t.id);
     go("/teacher");
@@ -91,12 +94,14 @@ route("/student-login", (params) => {
     if (!me) {
       me = { id: store.newId("s"), grade, classNum, num, name };
       store.set(st => st.students.push(me));
+      cloudUpsertStudent(me).catch(() => {});
     }
     store.set(st => {
       st.whoStudent = me.id;
       const ss = st.sessions.find(x => x.id === target.id);
       if (ss && !ss.participants.includes(me.id)) ss.participants.push(me.id);
     });
+    cloudAddParticipant(target.id, me.id).catch(() => {});
     sessionStorage.removeItem("inkclass:joinCode");
     go("/student/live/" + target.id);
   };
