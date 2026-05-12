@@ -49,8 +49,7 @@ function viewLessons(teacher) {
   const head = el("div", { class: "main-header" }, [
     el("h1", {}, "수업 자료"),
     el("div", { class: "actions" }, [
-      el("button", { class: "btn", onClick: () => importDialog(teacher) }, "파일 업로드"),
-      el("button", { class: "btn btn-primary", onClick: () => createLesson(teacher) }, "+ 새 수업"),
+      el("button", { class: "btn btn-primary", onClick: () => newLessonDialog(teacher) }, "+ 새 수업"),
     ]),
   ]);
   wrap.appendChild(head);
@@ -59,7 +58,7 @@ function viewLessons(teacher) {
   if (lessons.length === 0) {
     wrap.appendChild(el("div", { class: "empty-state" }, [
       el("h4", {}, "아직 수업 자료가 없습니다"),
-      "+ 새 수업으로 슬라이드를 만들거나, 파일 업로드로 PPT/PDF/이미지를 가져와 시작해 보세요.",
+      "+ 새 수업을 눌러 빈 슬라이드로 시작하거나 PDF·이미지를 가져와 만들어 보세요.",
     ]));
     return wrap;
   }
@@ -93,6 +92,31 @@ function createLesson(teacher) {
   });
   openEditor(id);
 }
+
+function newLessonDialog(teacher) {
+  const body = el("div", { class: "new-lesson-pick" }, [
+    el("p", { class: "muted" }, "어떻게 시작할까요?"),
+    el("div", { class: "pick-cards" }, [
+      el("button", { class: "pick-card", onClick: () => { close(); createLesson(teacher); } }, [
+        el("div", { class: "pick-icon", html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>' }),
+        el("strong", {}, "빈 수업 만들기"),
+        el("span", { class: "desc" }, "빈 슬라이드 1장으로 시작해 직접 그리거나 입력합니다."),
+      ]),
+      el("button", { class: "pick-card", onClick: () => { close(); importDialog(teacher); } }, [
+        el("div", { class: "pick-icon", html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 21h14"/></svg>' }),
+        el("strong", {}, "파일에서 가져오기"),
+        el("span", { class: "desc" }, "PDF · 이미지 · Google Slides 링크에서 슬라이드를 만듭니다."),
+      ]),
+    ]),
+  ]);
+  let close = () => {};
+  const m = modal({
+    title: "새 수업",
+    body,
+    actions: [{ label: "취소", onClick: (c) => c() }],
+  });
+  close = m.close;
+}
 function makeBlankSlide(bg = null) {
   return { id: store.newId("slide"), bg, mode: "none", strokes: [], texts: [] };
 }
@@ -103,8 +127,9 @@ function deleteLesson(id) {
 
 function importDialog(teacher) {
   const body = el("div", { class: "field" }, [
-    el("p", { class: "muted" }, "PDF, PNG/JPG 이미지, 또는 PPTX(이미지로 변환)를 업로드해 즉시 슬라이드로 사용할 수 있습니다."),
-    el("input", { type: "file", id: "imp-file", accept: ".pdf,.png,.jpg,.jpeg,.webp,.pptx" }),
+    el("p", { class: "muted" }, "PDF · PNG · JPG · JPEG · WEBP 파일을 업로드해 즉시 슬라이드로 사용할 수 있습니다."),
+    el("input", { type: "file", id: "imp-file", accept: ".pdf,.png,.jpg,.jpeg,.webp,.pptx,.hwp,.hwpx" }),
+    el("p", { class: "muted", style: { fontSize: "12px" } }, "※ PPTX · HWP · HWPX는 직접 변환이 어려워요. 무료 도구(예: smallpdf.com, ilovepdf.com)에서 PDF로 변환 후 올려주세요."),
     el("p", { class: "muted" }, "또는 Google Slides 공유 링크를 붙여넣으세요. (게시 모드 임베드)"),
     el("input", { id: "imp-gs", placeholder: "https://docs.google.com/presentation/.../pub?start=false&loop=false" }),
   ]);
@@ -130,7 +155,11 @@ function importDialog(teacher) {
           }
           if (!f) { close(); return; }
           const slides = await fileToSlides(f);
-          if (!slides) { alert("이 파일 형식은 데모에서 지원되지 않습니다. 이미지 또는 PDF를 사용해 주세요."); close(); return; }
+          if (!slides) {
+            alert("PPTX · HWP · HWPX는 브라우저에서 직접 변환할 수 없어요.\n\nsmallpdf.com 또는 ilovepdf.com 에서 PDF로 변환 후 다시 올려주세요.\n또는 슬라이드를 이미지(PNG/JPG)로 저장해 올려도 됩니다.");
+            close();
+            return;
+          }
           const id = store.newId("lesson");
           store.set(s => {
             s.lessons.push({
@@ -156,10 +185,7 @@ async function fileToSlides(file) {
   if (ext === "pdf") {
     return await pdfToSlides(file);
   }
-  if (ext === "pptx") {
-    // Lightweight: ask user to export as PDF/images. (Full PPTX render needs heavy deps.)
-    return null;
-  }
+  // PPTX · HWP · HWPX는 브라우저에서 변환 불가 → 호출부에서 안내
   return null;
 }
 function fileToDataUrl(f) {
@@ -246,7 +272,11 @@ export function editorView({ id }) {
     rail.appendChild(el("button", {
       class: "add-slide",
       onClick: () => { lesson.slides.push(makeBlankSlide()); activeIndex = lesson.slides.length - 1; store.set(s => s); render(); },
-    }, "+ 슬라이드 추가"));
+    }, "+ 빈 슬라이드"));
+    rail.appendChild(el("button", {
+      class: "add-slide",
+      onClick: () => addSlidesFromFile(lesson, activeIndex, (newIdx) => { activeIndex = newIdx; render(); }),
+    }, "+ 파일에서 추가"));
     shell.appendChild(rail);
 
     // canvas
@@ -319,18 +349,42 @@ function modePicker(slide, rerender) {
 }
 
 function replaceBg(slide, rerender) {
-  const inp = el("input", { type: "file", accept: ".png,.jpg,.jpeg,.webp,.pdf" });
+  const inp = el("input", { type: "file", accept: ".png,.jpg,.jpeg,.webp,.pdf,.pptx,.hwp,.hwpx" });
   inp.onchange = async () => {
     const f = inp.files[0];
     if (!f) return;
     const ext = f.name.toLowerCase().split(".").pop();
+    if (["pptx","hwp","hwpx"].includes(ext)) {
+      alert("PPTX · HWP · HWPX는 브라우저에서 직접 변환할 수 없어요.\n\nsmallpdf.com 또는 ilovepdf.com 에서 PDF로 변환 후 다시 올려주세요.\n또는 슬라이드를 이미지(PNG/JPG)로 저장해 올려도 됩니다.");
+      return;
+    }
     if (ext === "pdf") {
       const slides = await pdfToSlides(f);
-      if (slides) slide.bg = slides[0].bg;
+      if (slides && slides.length) slide.bg = slides[0].bg;
     } else {
       slide.bg = await fileToDataUrl(f);
     }
     store.set(s => s); rerender();
+  };
+  inp.click();
+}
+
+// 편집 중 현재 슬라이드 뒤에 PDF · 이미지를 한꺼번에 삽입
+function addSlidesFromFile(lesson, afterIndex, onDone) {
+  const inp = el("input", { type: "file", accept: ".pdf,.png,.jpg,.jpeg,.webp,.pptx,.hwp,.hwpx" });
+  inp.onchange = async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    const ext = f.name.toLowerCase().split(".").pop();
+    if (["pptx","hwp","hwpx"].includes(ext)) {
+      alert("PPTX · HWP · HWPX는 브라우저에서 직접 변환할 수 없어요.\n\nsmallpdf.com 또는 ilovepdf.com 에서 PDF로 변환 후 다시 올려주세요.\n또는 슬라이드를 이미지(PNG/JPG)로 저장해 올려도 됩니다.");
+      return;
+    }
+    const newSlides = await fileToSlides(f);
+    if (!newSlides || !newSlides.length) { alert("파일을 슬라이드로 변환하지 못했어요."); return; }
+    lesson.slides.splice(afterIndex + 1, 0, ...newSlides);
+    store.set(s => s);
+    onDone && onDone(afterIndex + 1);
   };
   inp.click();
 }
@@ -419,6 +473,7 @@ function liveClass(wrap, session, teacher) {
       el("span", { class: "muted" }, `슬라이드 ${session.currentSlide + 1} / ${session.slidesSnapshot.length}`),
     ]),
     el("div", { class: "actions" }, [
+      el("button", { class: "btn", onClick: () => enterFocusMode(session, teacher) }, "수업 모드"),
       el("button", { class: "btn", onClick: () => completeSession(session, "stopped") }, "수업 중지"),
       el("button", { class: "btn btn-primary", onClick: () => completeSession(session, "completed") }, "수업 완료"),
     ]),
@@ -536,6 +591,141 @@ function liveClass(wrap, session, teacher) {
 
 function modeLabel(m) {
   return ({ none: "PPT", whole: "전체", individual: "개별", group: "그룹" })[m] || m;
+}
+
+/* ── 수업 모드 (풀스크린 오버레이) ───────────────────── */
+function enterFocusMode(session, teacher) {
+  // 중복 진입 방지
+  if (document.querySelector(".focus-shell")) return;
+
+  let activeTool = "pen";
+  let activeColor = COLORS[0];
+  let activeSize = 2;
+  let viewer = null;
+  let progressTimer = null;
+
+  const shell = el("div", { class: "focus-shell" });
+  document.body.appendChild(shell);
+
+  function currentSlide() { return session.slidesSnapshot[session.currentSlide]; }
+
+  function close() {
+    clearInterval(progressTimer);
+    document.removeEventListener("keydown", onKey);
+    shell.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") close();
+    else if (e.key === "ArrowRight") nav(1);
+    else if (e.key === "ArrowLeft") nav(-1);
+  }
+  document.addEventListener("keydown", onKey);
+
+  function persistAndRerender() { store.set(s => s); render(); }
+  function nav(d) {
+    const slide = currentSlide();
+    session.currentSlide = Math.max(0, Math.min(session.slidesSnapshot.length - 1, session.currentSlide + d));
+    store.set(s => s);
+    sync.emit({ type: "slide-change" });
+    render();
+  }
+  function switchFlow(f) { session.flow = f; persistAndRerender(); sync.emit({ type: "flow-change" }); }
+  function switchMode(m) { currentSlide().mode = m; persistAndRerender(); sync.emit({ type: "mode-change" }); }
+
+  function render() {
+    const slide = currentSlide();
+    shell.innerHTML = "";
+
+    // 우상단: 진행상황 FAB + 종료
+    const top = el("div", { class: "focus-top" }, [
+      el("span", { class: "tag live" }, "수업 중"),
+      el("span", { class: "muted", style: { fontSize: "12px" } }, `${session.flow === "teacher" ? "교사 흐름" : "학생 흐름"} · ${modeLabel(slide.mode)}`),
+      el("span", { class: "spacer" }),
+      el("button", { class: "btn btn-tiny", onClick: () => openProgress() }, "진행상황"),
+      el("button", { class: "btn btn-tiny", onClick: close, title: "수업 모드 종료 (ESC)" }, "✕ 종료"),
+    ]);
+    shell.appendChild(top);
+
+    // 좌상단 떠 있는 도구바
+    const tb = el("div", { class: "focus-toolbar" });
+    TOOLS.forEach(t => tb.appendChild(
+      el("button", { class: "tool" + (activeTool === t.id ? " active" : ""), title: t.label, onClick: () => { activeTool = t.id; viewer && viewer.setTool(t.id); render(); } }, [svgIcon(t.icon)])
+    ));
+    tb.appendChild(el("div", { class: "toolbar-divider" }));
+    COLORS.forEach(c => tb.appendChild(
+      el("div", { class: "swatch" + (activeColor === c ? " active" : ""), style: { background: c }, onClick: () => { activeColor = c; viewer && viewer.setColor(c); render(); } })
+    ));
+    tb.appendChild(el("div", { class: "toolbar-divider" }));
+    [{ id: 1.5, label: "S" },{ id: 2.5, label: "M" },{ id: 4, label: "L" },{ id: 8, label: "XL" }].forEach(s =>
+      tb.appendChild(el("button", { class: "tool" + (activeSize === s.id ? " active" : ""), style: { width: "auto", padding: "0 10px" }, onClick: () => { activeSize = s.id; viewer && viewer.setSize(s.id); render(); } }, s.label))
+    );
+    shell.appendChild(tb);
+
+    // 슬라이드 스테이지
+    const stageArea = el("div", { class: "focus-stage" });
+    shell.appendChild(stageArea);
+
+    // 하단 컨트롤
+    const controls = el("div", { class: "focus-controls" }, [
+      el("button", { class: "btn btn-tiny", disabled: session.currentSlide === 0, onClick: () => nav(-1) }, "← 이전"),
+      el("span", { class: "muted", style: { fontSize: "12px", padding: "0 8px" } }, `${session.currentSlide + 1} / ${session.slidesSnapshot.length}`),
+      el("button", { class: "btn btn-tiny", disabled: session.currentSlide === session.slidesSnapshot.length - 1, onClick: () => nav(1) }, "다음 →"),
+      el("span", { class: "toolbar-divider" }),
+      el("span", { class: "muted", style: { fontSize: "11px" } }, "흐름"),
+      el("button", { class: "btn btn-tiny" + (session.flow === "teacher" ? " btn-primary" : ""), onClick: () => switchFlow("teacher") }, "교사"),
+      el("button", { class: "btn btn-tiny" + (session.flow === "student" ? " btn-primary" : ""), onClick: () => switchFlow("student") }, "학생"),
+      el("span", { class: "toolbar-divider" }),
+      el("span", { class: "muted", style: { fontSize: "11px" } }, "모드"),
+      ...["none","whole","individual","group"].map(m =>
+        el("button", { class: "btn btn-tiny" + (slide.mode === m ? " btn-primary" : ""), onClick: () => switchMode(m) }, modeLabel(m))
+      ),
+    ]);
+    shell.appendChild(controls);
+
+    // 슬라이드 마운트 — 일반 모드와 동일한 viewer 사용 → 펜·텍스트 동작 동일
+    queueMicrotask(() => {
+      const scope = slide.mode === "none" ? "ppt" : "whole";
+      viewer = renderSlide({ root: stageArea, slide, session, scope, readOnly: false });
+      viewer.setTool(activeTool);
+      viewer.setColor(activeColor);
+      viewer.setSize(activeSize);
+    });
+  }
+
+  // 진행상황 슬라이드인 모달
+  function openProgress() {
+    const slide = currentSlide();
+    const panel = el("aside", { class: "focus-progress-modal open" }, [
+      el("div", { class: "row-flex", style: { marginBottom: "10px" } }, [
+        el("h4", { style: { margin: 0 } }, "진행 상황"),
+        el("span", { class: "spacer" }),
+        el("button", { class: "btn btn-tiny", onClick: () => { panel.remove(); clearInterval(progressTimer); progressTimer = null; } }, "✕"),
+      ]),
+      el("div", { id: "focus-prog-body" }),
+    ]);
+    shell.appendChild(panel);
+
+    const body = panel.querySelector("#focus-prog-body");
+    function paint() {
+      body.innerHTML = "";
+      if (slide.mode === "individual") body.appendChild(individualProgress(session, slide));
+      else if (slide.mode === "group") body.appendChild(groupProgress(session, slide));
+      else if (slide.mode === "whole") body.appendChild(el("p", { class: "muted" }, "전체 모드: 교사·학생이 동일 캔버스를 공유합니다."));
+      else body.appendChild(el("p", { class: "muted" }, "PPT 모드: 학생은 슬라이드를 시청합니다."));
+      const list = el("div", { style: { marginTop: "12px", display: "grid", gap: "4px" } });
+      list.appendChild(el("h4", { style: { fontSize: "12px", color: "var(--muted)", margin: "8px 0 4px" } }, `참여자 ${session.participants.length}명`));
+      session.participants.forEach(sid => {
+        const stu = store.state.students.find(x => x.id === sid);
+        list.appendChild(el("div", { style: { fontSize: "12px" } }, studentLabel(stu)));
+      });
+      body.appendChild(list);
+    }
+    paint();
+    clearInterval(progressTimer);
+    progressTimer = setInterval(paint, 1500);
+  }
+
+  render();
 }
 
 function individualProgress(session, slide) {
@@ -723,24 +913,73 @@ function completeSession(session, status) {
 function viewSessions(teacher) {
   const wrap = el("div", {});
   wrap.appendChild(el("div", { class: "main-header" }, [el("h1", {}, "수업 세션")]));
-  const sessions = store.state.sessions.filter(s => s.teacherId === teacher.id).sort((a,b) => (b.startedAt - a.startedAt));
-  if (!sessions.length) {
+  const all = store.state.sessions.filter(s => s.teacherId === teacher.id).sort((a,b) => (b.startedAt - a.startedAt));
+  const stopped = all.filter(s => s.status === "stopped");
+  const completed = all.filter(s => s.status === "completed");
+
+  if (!stopped.length && !completed.length) {
     wrap.appendChild(el("div", { class: "empty-state" }, [el("h4", {}, "아직 수업 세션이 없습니다"), "수업이 끝나면 자동으로 보관됩니다."]));
     return wrap;
   }
+
+  if (stopped.length) {
+    wrap.appendChild(el("div", { class: "session-section" }, [
+      el("h2", {}, `이어서 진행할 수업 (${stopped.length})`),
+      buildSessionList(stopped, teacher, true),
+    ]));
+  }
+  if (completed.length) {
+    wrap.appendChild(el("div", { class: "session-section" }, [
+      el("h2", {}, `완료된 수업 (${completed.length})`),
+      buildSessionList(completed, teacher, false),
+    ]));
+  }
+  return wrap;
+}
+
+function buildSessionList(sessions, teacher, canResume) {
   const list = el("div", { class: "record-list" });
   sessions.forEach(s => {
-    const row = el("div", { class: "record-row", onClick: () => openSessionDetail(s) }, [
-      el("div", {}, [
+    const row = el("div", { class: "record-row" }, [
+      el("div", { style: { flex: 1, cursor: "pointer" }, onClick: () => openSessionDetail(s) }, [
         el("div", { style: { fontWeight: 600 } }, s.title),
-        el("div", { class: "meta" }, `${fmtDate(s.startedAt)} · 참여 ${s.participants.length}명`),
+        el("div", { class: "meta" }, `${fmtDate(s.startedAt)} · 참여 ${s.participants.length}명 · 슬라이드 ${(s.currentSlide ?? 0) + 1}/${s.slidesSnapshot.length}`),
       ]),
-      el("span", { class: `tag ${s.status}` }, ({ live: "LIVE", completed: "완료", stopped: "중지" })[s.status]),
+      el("div", { class: "row-flex", style: { gap: "6px" } }, [
+        el("span", { class: `tag ${s.status}` }, ({ completed: "완료", stopped: "중지" })[s.status]),
+        canResume ? el("button", { class: "btn btn-tiny btn-primary", onClick: (e) => { e.stopPropagation(); restartSession(s); } }, "이어서 시작") : null,
+        el("button", { class: "btn btn-tiny btn-danger", onClick: (e) => { e.stopPropagation(); deleteSession(s.id); } }, "삭제"),
+      ].filter(Boolean)),
     ]);
     list.appendChild(row);
   });
-  wrap.appendChild(list);
-  return wrap;
+  return list;
+}
+
+function restartSession(session) {
+  if (!confirm(`"${session.title}" 수업을 ${session.currentSlide + 1}번 슬라이드부터 이어서 진행할까요?`)) return;
+  store.set(s => {
+    // 다른 LIVE 세션은 자동으로 중지 처리
+    s.sessions.forEach(ss => {
+      if (ss.teacherId === session.teacherId && ss.status === "live" && ss.id !== session.id) {
+        ss.status = "stopped";
+        ss.endedAt = Date.now();
+      }
+    });
+    const target = s.sessions.find(x => x.id === session.id);
+    if (target) {
+      target.status = "live";
+      target.endedAt = null;
+    }
+  });
+  sync.emit({ type: "session-restart" });
+  go("/teacher/live");
+}
+
+function deleteSession(sessionId) {
+  if (!confirm("이 세션과 모든 학생 기록을 영구 삭제할까요?")) return;
+  store.set(s => { s.sessions = s.sessions.filter(x => x.id !== sessionId); });
+  sync.emit({ type: "session-deleted" });
 }
 
 function openSessionDetail(session) {
