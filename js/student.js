@@ -43,21 +43,48 @@ function viewJoin(me) {
   const wrap = el("div", {});
   wrap.appendChild(el("div", { class: "main-header" }, [el("h1", {}, "수업 하기")]));
 
-  // Show all currently live sessions
+  // 코드 입력 카드 — 가장 직관적인 진입점
+  const codeCard = el("div", { class: "card join-by-code" }, [
+    el("h3", {}, "수업 코드로 입장"),
+    el("p", { class: "meta" }, "선생님이 알려준 6자리 코드를 입력하세요."),
+    el("div", { class: "row-flex", style: { gap: "6px" } }, [
+      el("input", {
+        id: "code-input",
+        placeholder: "예) ABC123",
+        autocapitalize: "characters",
+        autocomplete: "off",
+        spellcheck: "false",
+        maxlength: "6",
+        style: { flex: "1", padding: "10px 12px", border: "1px solid var(--line)", borderRadius: "10px", fontSize: "16px", letterSpacing: "0.15em", textAlign: "center", fontWeight: "600" },
+        onInput: (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6); },
+      }),
+      el("button", { class: "btn btn-primary", onClick: () => {
+        const code = (wrap.querySelector("#code-input").value || "").toUpperCase().trim();
+        if (!code) return;
+        const target = store.state.sessions.find(s => s.status === "live" && (s.joinCode || "").toUpperCase() === code);
+        if (!target) { alert("해당 코드의 진행 중인 수업을 찾지 못했어요."); return; }
+        joinSession(target, me);
+      } }, "입장"),
+    ]),
+  ]);
+  wrap.appendChild(codeCard);
+
+  // 또한, 진행 중인 모든 수업 리스트도 함께 제공 (선생님이 코드 안 알려준 경우)
   const live = store.state.sessions.filter(s => s.status === "live");
   if (!live.length) {
     wrap.appendChild(el("div", { class: "empty-state" }, [
       el("h4", {}, "현재 진행 중인 수업이 없어요"),
-      "교사가 수업을 시작하면 여기에 표시됩니다.",
+      "선생님이 수업을 시작하면 여기 또는 위 코드 입력으로 참여할 수 있어요.",
     ]));
     return wrap;
   }
+  wrap.appendChild(el("h4", { style: { margin: "20px 0 10px", fontSize: "12px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" } }, "진행 중인 수업"));
   const grid = el("div", { class: "card-grid" });
   live.forEach(s => {
     const teacher = store.state.teachers.find(t => t.id === s.teacherId);
     const card = el("div", { class: "card" }, [
       el("h3", {}, s.title),
-      el("div", { class: "meta" }, `${teacher?.name || "선생님"} · ${fmtDate(s.startedAt)}`),
+      el("div", { class: "meta" }, `${teacher?.name || "선생님"} · ${fmtDate(s.startedAt)}${s.joinCode ? ` · 코드 ${s.joinCode}` : ""}`),
       el("div", { class: "actions" }, [
         el("button", { class: "btn btn-tiny btn-primary", onClick: () => joinSession(s, me) }, "입장"),
       ]),

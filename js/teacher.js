@@ -426,6 +426,7 @@ function startLessonDialog(lesson, teacher) {
             s.sessions.forEach(ss => { if (ss.teacherId === teacher.id && ss.status === "live") ss.status = "stopped"; });
             const session = {
               id: store.newId("sess"),
+              joinCode: store.newJoinCode(),
               lessonId: lesson.id,
               teacherId: teacher.id,
               title: lesson.title,
@@ -470,8 +471,12 @@ function liveClass(wrap, session, teacher) {
     el("div", { class: "row-flex" }, [
       el("h1", {}, session.title),
       el("span", { class: "tag live" }, "LIVE"),
+      session.joinCode ? el("span", { class: "join-code", title: "학생 입장용 수업 코드" }, [
+        el("span", { class: "muted", style: { fontSize: "11px" } }, "수업 코드"),
+        el("strong", {}, session.joinCode),
+      ]) : null,
       el("span", { class: "muted" }, `슬라이드 ${session.currentSlide + 1} / ${session.slidesSnapshot.length}`),
-    ]),
+    ].filter(Boolean)),
     el("div", { class: "actions" }, [
       el("button", { class: "btn", onClick: () => enterFocusMode(session, teacher) }, "수업 모드"),
       el("button", { class: "btn", onClick: () => completeSession(session, "stopped") }, "수업 중지"),
@@ -639,11 +644,15 @@ function enterFocusMode(session, teacher) {
     // 우상단: 진행상황 FAB + 종료
     const top = el("div", { class: "focus-top" }, [
       el("span", { class: "tag live" }, "수업 중"),
+      session.joinCode ? el("span", { class: "join-code small" }, [
+        el("span", { class: "muted", style: { fontSize: "10px" } }, "코드"),
+        el("strong", {}, session.joinCode),
+      ]) : null,
       el("span", { class: "muted", style: { fontSize: "12px" } }, `${session.flow === "teacher" ? "교사 흐름" : "학생 흐름"} · ${modeLabel(slide.mode)}`),
       el("span", { class: "spacer" }),
       el("button", { class: "btn btn-tiny", onClick: () => openProgress() }, "진행상황"),
       el("button", { class: "btn btn-tiny", onClick: close, title: "수업 모드 종료 (ESC)" }, "✕ 종료"),
-    ]);
+    ].filter(Boolean));
     shell.appendChild(top);
 
     // 좌상단 떠 있는 도구바
@@ -970,6 +979,7 @@ function restartSession(session) {
     if (target) {
       target.status = "live";
       target.endedAt = null;
+      if (!target.joinCode) target.joinCode = store.newJoinCode();
     }
   });
   sync.emit({ type: "session-restart" });
@@ -1103,17 +1113,32 @@ function openStudentArchive(stu, teacher) {
 
 function viewQR(teacher) {
   const wrap = el("div", {});
-  wrap.appendChild(el("div", { class: "main-header" }, [el("h1", {}, "접속 QR")]));
-  const url = `${location.origin}${location.pathname}#/student/join?t=${encodeURIComponent(teacher.id)}`;
+  wrap.appendChild(el("div", { class: "main-header" }, [el("h1", {}, "수업 접속 QR")]));
+
+  const live = store.state.sessions.find(s => s.teacherId === teacher.id && s.status === "live");
+  if (!live) {
+    wrap.appendChild(el("div", { class: "empty-state" }, [
+      el("h4", {}, "진행 중인 수업이 없습니다"),
+      "수업 자료에서 [수업 시작]을 누르면 자동으로 6자리 코드와 QR이 발급됩니다.",
+    ]));
+    return wrap;
+  }
+
+  const url = `${location.origin}${location.pathname}#/student/join?c=${encodeURIComponent(live.joinCode || "")}`;
   const card = el("div", { class: "qr-card" }, [
-    el("div", { style: { fontSize: "13px", color: "var(--muted)" } }, `${teacher.name} 선생님의 수업방`),
+    el("div", { style: { fontSize: "13px", color: "var(--muted)" } }, `${teacher.name} 선생님 · ${live.title}`),
+    el("div", { class: "code-display" }, live.joinCode || "—"),
+    el("div", { class: "muted", style: { fontSize: "12px" } }, "학생들이 위 코드를 입력하거나, 아래 QR을 스캔하면 입장합니다."),
     el("canvas", { id: "qr" }),
     el("div", { class: "url" }, url),
-    el("button", { class: "btn", onClick: () => { navigator.clipboard.writeText(url); } }, "URL 복사"),
+    el("div", { class: "row-flex", style: { gap: "6px" } }, [
+      el("button", { class: "btn btn-tiny", onClick: () => { navigator.clipboard.writeText(live.joinCode || ""); alert("수업 코드를 복사했어요."); } }, "코드 복사"),
+      el("button", { class: "btn btn-tiny", onClick: () => { navigator.clipboard.writeText(url); alert("접속 URL을 복사했어요."); } }, "URL 복사"),
+    ]),
   ]);
   wrap.appendChild(card);
   setTimeout(() => {
-    if (window.QRCode) QRCode.toCanvas(card.querySelector("#qr"), url, { width: 240, margin: 1, color: { dark: "#1a1a1a", light: "#ffffff" } });
+    if (window.QRCode) QRCode.toCanvas(card.querySelector("#qr"), url, { width: 260, margin: 1, color: { dark: "#1a1a1a", light: "#ffffff" } });
   }, 30);
   return wrap;
 }

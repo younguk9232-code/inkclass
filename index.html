@@ -53,14 +53,15 @@
       <button class="back" data-go="landing">← 처음으로</button>
       <div class="auth-card">
         <h2>학생 입장</h2>
-        <p class="muted">학년·반·번호·이름을 입력하면 수업에 참여할 수 있어요.</p>
+        <p class="muted">선생님이 알려준 6자리 수업 코드와 본인 정보를 입력하세요.</p>
+        <label class="code-field">수업 코드<input id="s-code" placeholder="ABC123" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="6" /></label>
         <div class="row">
           <label>학년<input id="s-grade" type="number" min="1" max="12" placeholder="6" /></label>
           <label>반<input id="s-class" type="number" min="1" placeholder="2" /></label>
           <label>번호<input id="s-num" type="number" min="1" placeholder="14" /></label>
         </div>
         <label>이름<input id="s-name" placeholder="홍길동" /></label>
-        <button class="btn btn-primary" id="s-submit">입장</button>
+        <button class="btn btn-primary" id="s-submit">수업 입장</button>
         <p class="error" id="s-err"></p>
       </div>
     </main>

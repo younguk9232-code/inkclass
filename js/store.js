@@ -35,6 +35,17 @@ export const store = {
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
   // helpers
   newId(prefix = "id") { return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36)}`; },
+  // 학생 참여용 짧고 읽기 쉬운 6자리 코드 (혼동 쉬운 0/O, 1/I 제거)
+  newJoinCode() {
+    const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const live = new Set((this.state.sessions || []).filter(s => s.status === "live").map(s => s.joinCode));
+    for (let tries = 0; tries < 50; tries++) {
+      let c = "";
+      for (let i = 0; i < 6; i++) c += A[Math.floor(Math.random() * A.length)];
+      if (!live.has(c)) return c;
+    }
+    return Date.now().toString(36).toUpperCase().slice(-6);
+  },
 };
 
 export function getActiveSession(state = store.state) {

@@ -505,6 +505,45 @@ input, select, textarea { font-family: inherit; }
   .print-slide .slide-frame { box-shadow: none; border: 1px solid #ccc; }
 }
 
+/* ── Join code (teacher/live + QR) ───────────────────── */
+.join-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+.join-code strong { font-size: 14px; letter-spacing: 0.12em; font-weight: 700; }
+.join-code.small { padding: 3px 8px; border-radius: 6px; }
+.join-code.small strong { font-size: 12px; }
+
+.code-display {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--ink);
+  background: var(--accent-soft);
+  padding: 14px 24px;
+  border-radius: 14px;
+  text-align: center;
+  user-select: all;
+}
+
+.code-field input {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  letter-spacing: 0.18em;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.join-by-code { background: var(--surface); border-color: var(--ink-2); }
+.join-by-code h3 { margin: 0; }
+
 /* ── New-lesson pick cards (modal) ───────────────────── */
 .new-lesson-pick { display: grid; gap: 14px; }
 .pick-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
