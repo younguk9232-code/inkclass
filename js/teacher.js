@@ -259,16 +259,62 @@ export function editorView({ id }) {
     slot.appendChild(head);
 
     const shell = el("div", { class: "editor-shell" });
-    // rail
+    // rail (with drag-and-drop reorder)
     const rail = el("div", { class: "slide-rail" });
     lesson.slides.forEach((s, i) => {
-      const t = el("div", { class: "thumb" + (i === activeIndex ? " active" : ""), onClick: () => { activeIndex = i; render(); } }, [
+      const t = el("div", {
+        class: "thumb" + (i === activeIndex ? " active" : ""),
+        draggable: "true",
+        "data-idx": String(i),
+        onClick: () => { activeIndex = i; render(); },
+      }, [
         el("span", { class: "num" }, String(i + 1)),
         s.bg ? el("img", { src: s.bg }) : el("div", { style: { padding: "8px", fontSize: "11px", color: "#999" } }, "빈 슬라이드"),
+        el("button", { class: "thumb-up", title: "위로", onClick: (e) => { e.stopPropagation(); moveSlide(i, i - 1); } }, "↑"),
+        el("button", { class: "thumb-down", title: "아래로", onClick: (e) => { e.stopPropagation(); moveSlide(i, i + 1); } }, "↓"),
         el("button", { class: "del", onClick: (e) => { e.stopPropagation(); if (lesson.slides.length === 1) return; lesson.slides.splice(i, 1); activeIndex = Math.max(0, activeIndex - 1); store.set(s => s); render(); } }, "삭제"),
       ]);
+      // Drag handlers
+      t.addEventListener("dragstart", (e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(i));
+        t.classList.add("dragging");
+      });
+      t.addEventListener("dragend", () => t.classList.remove("dragging"));
+      t.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const r = t.getBoundingClientRect();
+        const after = (e.clientY - r.top) > r.height / 2;
+        t.classList.toggle("drop-above", !after);
+        t.classList.toggle("drop-below", after);
+      });
+      t.addEventListener("dragleave", () => { t.classList.remove("drop-above", "drop-below"); });
+      t.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const from = parseInt(e.dataTransfer.getData("text/plain"));
+        const r = t.getBoundingClientRect();
+        const after = (e.clientY - r.top) > r.height / 2;
+        let to = i + (after ? 1 : 0);
+        if (from < to) to -= 1; // 자기 자신 이동 시 인덱스 보정
+        t.classList.remove("drop-above", "drop-below");
+        if (from === to) return;
+        moveSlide(from, to);
+      });
       rail.appendChild(t);
     });
+
+    function moveSlide(from, to) {
+      if (to < 0 || to >= lesson.slides.length || from === to) return;
+      const [moved] = lesson.slides.splice(from, 1);
+      lesson.slides.splice(to, 0, moved);
+      // activeIndex 유지: 활성 슬라이드가 함께 따라가도록
+      if (activeIndex === from) activeIndex = to;
+      else if (from < activeIndex && to >= activeIndex) activeIndex -= 1;
+      else if (from > activeIndex && to <= activeIndex) activeIndex += 1;
+      store.set(s => s);
+      render();
+    }
     rail.appendChild(el("button", {
       class: "add-slide",
       onClick: () => { lesson.slides.push(makeBlankSlide()); activeIndex = lesson.slides.length - 1; store.set(s => s); render(); },
@@ -524,11 +570,13 @@ function liveClass(wrap, session, teacher) {
 
   wrap.appendChild(shell);
 
-  // mount stage canvas (teacher writes to "whole" by default; for individual/group, show shared overlay placeholder)
+  // 교사 측: PPT/전체 모두 'whole' scope 에 저장 → 도구 변경·새로고침 시에도 필기 보존.
+  // 학생 측은 student.js 가 PPT 모드일 때 scope='ppt' (readOnly)로 분기.
   let viewer;
   function mountStage() {
-    const scope = slide.mode === "whole" ? "whole" : (slide.mode === "none" ? "ppt" : "whole");
-    // Teacher always writes to "whole" overlay (not into student records)
+    const scope = slide.mode === "individual" ? "individual"
+                : slide.mode === "group" ? "group"
+                : "whole";
     viewer = renderSlide({ root: stageArea, slide, session, scope, readOnly: false });
     viewer.setTool("pen");
     viewer.setColor("#1a1a1a");
@@ -626,22 +674,65 @@ function enterFocusMode(session, teacher) {
   }
   document.addEventListener("keydown", onKey);
 
-  function persistAndRerender() { store.set(s => s); render(); }
+  // 교사 측 scope 결정: PPT/전체는 모두 'whole'에 저장(교사 필기 보존),
+  // 개별·그룹은 해당 scope 그대로. 학생 측은 student.js 가 PPT 모드일 때 readOnly로 시청만.
+  function teacherScope(slide) {
+    if (slide.mode === "individual") return "individual";
+    if (slide.mode === "group") return "group";
+    return "whole";
+  }
+
+  // 마지막으로 마운트된 (slideId, scope) 추적 — 동일하면 viewer를 보존, 다르면 재마운트
+  let mountedKey = null;
+
   function nav(d) {
-    const slide = currentSlide();
     session.currentSlide = Math.max(0, Math.min(session.slidesSnapshot.length - 1, session.currentSlide + d));
     store.set(s => s);
     sync.emit({ type: "slide-change" });
     render();
   }
-  function switchFlow(f) { session.flow = f; persistAndRerender(); sync.emit({ type: "flow-change" }); }
-  function switchMode(m) { currentSlide().mode = m; persistAndRerender(); sync.emit({ type: "mode-change" }); }
-
-  function render() {
+  function switchFlow(f) {
+    session.flow = f;
+    store.set(s => s);
+    sync.emit({ type: "flow-change" });
+    refreshChrome(); // viewer는 유지 (slide·scope 그대로)
+  }
+  function switchMode(m) {
+    currentSlide().mode = m;
+    store.set(s => s);
+    sync.emit({ type: "mode-change" });
+    render(); // scope가 바뀔 수 있으므로 재마운트 가능
+  }
+  function clearCurrent() {
     const slide = currentSlide();
-    shell.innerHTML = "";
+    if (!confirm("이 슬라이드의 필기와 입력 내용을 모두 지울까요?")) return;
+    const scope = teacherScope(slide);
+    if (scope === "whole") {
+      session.records ||= {};
+      session.records.__whole ||= {};
+      session.records.__whole[slide.id] = { strokes: [], texts: [] };
+    } else if (scope === "individual") {
+      // 모든 학생의 해당 슬라이드 기록 초기화
+      Object.values(session.records || {}).forEach(rec => { if (rec && rec[slide.id]) rec[slide.id] = { strokes: [], texts: [] }; });
+    } else if (scope === "group") {
+      session.records ||= {};
+      session.records.__groups ||= {};
+      Object.values(session.records.__groups).forEach(g => { if (g && g[slide.id]) g[slide.id] = { strokes: [], texts: [] }; });
+    }
+    store.set(s => s);
+    sync.emit({ type: "clear-slide" });
+    // 화면 즉시 반영 — 재마운트
+    mountedKey = null;
+    render();
+  }
 
-    // 우상단: 진행상황 FAB + 종료
+  // 도구바 / 상단 / 하단 컨트롤만 다시 그림 (viewer 보존)
+  function refreshChrome() {
+    const slide = currentSlide();
+    // 기존 chrome 제거
+    shell.querySelectorAll(".focus-top, .focus-toolbar, .focus-controls").forEach(n => n.remove());
+
+    // 상단
     const top = el("div", { class: "focus-top" }, [
       el("span", { class: "tag live" }, "수업 중"),
       session.joinCode ? el("span", { class: "join-code small" }, [
@@ -655,24 +746,43 @@ function enterFocusMode(session, teacher) {
     ].filter(Boolean));
     shell.appendChild(top);
 
-    // 좌상단 떠 있는 도구바
+    // 좌측 떠 있는 도구바 (도구·색·굵기·전체삭제)
     const tb = el("div", { class: "focus-toolbar" });
     TOOLS.forEach(t => tb.appendChild(
-      el("button", { class: "tool" + (activeTool === t.id ? " active" : ""), title: t.label, onClick: () => { activeTool = t.id; viewer && viewer.setTool(t.id); render(); } }, [svgIcon(t.icon)])
+      el("button", {
+        class: "tool" + (activeTool === t.id ? " active" : ""),
+        title: t.label,
+        onClick: () => {
+          activeTool = t.id;
+          viewer && viewer.setTool(t.id);
+          refreshChrome(); // 도구바 active 상태만 새로 그림 — viewer는 유지
+        },
+      }, [svgIcon(t.icon)])
     ));
     tb.appendChild(el("div", { class: "toolbar-divider" }));
     COLORS.forEach(c => tb.appendChild(
-      el("div", { class: "swatch" + (activeColor === c ? " active" : ""), style: { background: c }, onClick: () => { activeColor = c; viewer && viewer.setColor(c); render(); } })
+      el("div", {
+        class: "swatch" + (activeColor === c ? " active" : ""),
+        style: { background: c },
+        onClick: () => { activeColor = c; viewer && viewer.setColor(c); refreshChrome(); },
+      })
     ));
     tb.appendChild(el("div", { class: "toolbar-divider" }));
     [{ id: 1.5, label: "S" },{ id: 2.5, label: "M" },{ id: 4, label: "L" },{ id: 8, label: "XL" }].forEach(s =>
-      tb.appendChild(el("button", { class: "tool" + (activeSize === s.id ? " active" : ""), style: { width: "auto", padding: "0 10px" }, onClick: () => { activeSize = s.id; viewer && viewer.setSize(s.id); render(); } }, s.label))
+      tb.appendChild(el("button", {
+        class: "tool" + (activeSize === s.id ? " active" : ""),
+        style: { width: "auto", padding: "0 10px" },
+        onClick: () => { activeSize = s.id; viewer && viewer.setSize(s.id); refreshChrome(); },
+      }, s.label))
     );
+    tb.appendChild(el("div", { class: "toolbar-divider" }));
+    tb.appendChild(el("button", {
+      class: "tool clear-all",
+      title: "이 슬라이드 전체 삭제",
+      style: { width: "auto", padding: "0 10px", color: "var(--danger)" },
+      onClick: clearCurrent,
+    }, "전체 삭제"));
     shell.appendChild(tb);
-
-    // 슬라이드 스테이지
-    const stageArea = el("div", { class: "focus-stage" });
-    shell.appendChild(stageArea);
 
     // 하단 컨트롤
     const controls = el("div", { class: "focus-controls" }, [
@@ -690,15 +800,33 @@ function enterFocusMode(session, teacher) {
       ),
     ]);
     shell.appendChild(controls);
+  }
 
-    // 슬라이드 마운트 — 일반 모드와 동일한 viewer 사용 → 펜·텍스트 동작 동일
-    queueMicrotask(() => {
-      const scope = slide.mode === "none" ? "ppt" : "whole";
-      viewer = renderSlide({ root: stageArea, slide, session, scope, readOnly: false });
-      viewer.setTool(activeTool);
-      viewer.setColor(activeColor);
-      viewer.setSize(activeSize);
-    });
+  function render() {
+    const slide = currentSlide();
+    const scope = teacherScope(slide);
+    const key = `${slide.id}|${scope}`;
+
+    // stage 가 없으면 생성, 있으면 보존
+    let stageArea = shell.querySelector(".focus-stage");
+    if (!stageArea) {
+      stageArea = el("div", { class: "focus-stage" });
+      shell.appendChild(stageArea);
+    }
+
+    refreshChrome();
+
+    // 슬라이드/scope 가 바뀌었거나 첫 마운트일 때만 viewer 재생성
+    if (mountedKey !== key) {
+      stageArea.innerHTML = "";
+      mountedKey = key;
+      queueMicrotask(() => {
+        viewer = renderSlide({ root: stageArea, slide, session, scope, readOnly: false });
+        viewer.setTool(activeTool);
+        viewer.setColor(activeColor);
+        viewer.setSize(activeSize);
+      });
+    }
   }
 
   // 진행상황 슬라이드인 모달

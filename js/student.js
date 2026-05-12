@@ -194,10 +194,11 @@ export function studentLive({ id }) {
 
     // mount viewer
     queueMicrotask(() => {
+      // PPT 모드: 학생은 교사 필기('whole')를 시청만 (readOnly). 전체/개별/그룹은 학생도 작성 가능.
+      const isPPT = slide.mode === "none";
       const scope = slide.mode === "individual" ? "individual"
         : slide.mode === "group" ? "group"
-        : slide.mode === "whole" ? "whole"
-        : "ppt";
+        : "whole"; // none(PPT) & whole 모두 whole 캔버스를 본다 (PPT는 readOnly)
       let scopeId = me.id;
       if (scope === "group") {
         const g = session.groups.find(g => g.memberIds.includes(me.id));
@@ -214,7 +215,7 @@ export function studentLive({ id }) {
       }
       viewer = renderSlide({
         root: stageArea, slide, session, scope, scopeId,
-        readOnly: scope === "ppt",
+        readOnly: isPPT,
       });
       viewer.setTool(activeTool); viewer.setColor(activeColor); viewer.setSize(activeSize);
     });

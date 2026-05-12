@@ -237,7 +237,33 @@ input, select, textarea { font-family: inherit; }
   border: none; border-radius: 4px; padding: 1px 6px; font-size: 10px;
   display: none;
 }
-.slide-rail .thumb:hover .del { display: block; }
+.slide-rail .thumb .thumb-up,
+.slide-rail .thumb .thumb-down {
+  position: absolute; right: 4px;
+  width: 18px; height: 18px;
+  background: rgba(255,255,255,.92);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 10px; line-height: 1; color: var(--ink-2);
+  display: none;
+  cursor: pointer; padding: 0;
+}
+.slide-rail .thumb .thumb-up { bottom: 26px; }
+.slide-rail .thumb .thumb-down { bottom: 4px; }
+.slide-rail .thumb:hover .del,
+.slide-rail .thumb:hover .thumb-up,
+.slide-rail .thumb:hover .thumb-down { display: block; }
+.slide-rail .thumb .thumb-up:hover,
+.slide-rail .thumb .thumb-down:hover { background: var(--ink); color: white; border-color: var(--ink); }
+
+.slide-rail .thumb.dragging { opacity: .35; }
+.slide-rail .thumb.drop-above { box-shadow: 0 -2px 0 var(--ink) inset, 0 -2px 0 var(--ink); }
+.slide-rail .thumb.drop-below { box-shadow: 0 2px 0 var(--ink) inset, 0 2px 0 var(--ink); }
+.slide-rail .thumb {
+  /* dnd cursor */
+  cursor: grab;
+}
+.slide-rail .thumb.dragging { cursor: grabbing; }
 .slide-rail .add-slide {
   border: 1px dashed var(--line);
   border-radius: 8px; padding: 14px;
