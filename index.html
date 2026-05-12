@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Inkclass — 인터랙티브 에듀테크</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="./env.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <template id="tpl-landing">
+    <main class="landing">
+      <header class="landing-top">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <span>Inkclass</span>
+        </div>
+        <span class="brand-tag">인터랙티브 에듀테크</span>
+      </header>
+      <section class="landing-hero">
+        <h1>한 자루의 펜으로<br/>함께 흐르는 수업.</h1>
+        <p>슬라이드를 공유하고, 필기를 나누고, 사고를 잇습니다.</p>
+        <div class="landing-cta">
+          <button class="btn btn-primary" data-go="teacher-login">교사로 시작</button>
+          <button class="btn btn-ghost" data-go="student-login">학생으로 참여</button>
+        </div>
+      </section>
+      <footer class="landing-foot">v0.1 draft · 로컬 동기화 데모</footer>
+    </main>
+  </template>
+
+  <template id="tpl-teacher-login">
+    <main class="auth">
+      <button class="back" data-go="landing">← 처음으로</button>
+      <div class="auth-card">
+        <h2>교사 로그인</h2>
+        <p class="muted">이름과 비밀번호를 입력하세요. 처음이라면 자동으로 등록됩니다.</p>
+        <label>이름<input id="t-name" placeholder="예) 김선생" /></label>
+        <label>비밀번호<input id="t-pw" type="password" placeholder="••••••" /></label>
+        <button class="btn btn-primary" id="t-submit">입장</button>
+        <p class="error" id="t-err"></p>
+      </div>
+    </main>
+  </template>
+
+  <template id="tpl-student-login">
+    <main class="auth">
+      <button class="back" data-go="landing">← 처음으로</button>
+      <div class="auth-card">
+        <h2>학생 입장</h2>
+        <p class="muted">학년·반·번호·이름을 입력하면 수업에 참여할 수 있어요.</p>
+        <div class="row">
+          <label>학년<input id="s-grade" type="number" min="1" max="12" placeholder="6" /></label>
+          <label>반<input id="s-class" type="number" min="1" placeholder="2" /></label>
+          <label>번호<input id="s-num" type="number" min="1" placeholder="14" /></label>
+        </div>
+        <label>이름<input id="s-name" placeholder="홍길동" /></label>
+        <button class="btn btn-primary" id="s-submit">입장</button>
+        <p class="error" id="s-err"></p>
+      </div>
+    </main>
+  </template>
+
+  <template id="tpl-teacher-dashboard">
+    <div class="shell">
+      <aside class="side">
+        <div class="brand small">
+          <div class="brand-mark"></div>
+          <span>Inkclass</span>
+        </div>
+        <nav>
+          <button data-tab="lessons" class="nav-item active">수업 자료</button>
+          <button data-tab="live" class="nav-item">진행 중</button>
+          <button data-tab="sessions" class="nav-item">수업 세션</button>
+          <button data-tab="students" class="nav-item">학생 명단</button>
+          <button data-tab="qr" class="nav-item">접속 QR</button>
+        </nav>
+        <div class="side-foot">
+          <div class="me" id="t-who"></div>
+          <button class="btn-link" id="t-logout">로그아웃</button>
+        </div>
+      </aside>
+      <section class="main">
+        <div id="tab-content"></div>
+      </section>
+    </div>
+  </template>
+
+  <template id="tpl-student-dashboard">
+    <div class="shell">
+      <aside class="side">
+        <div class="brand small">
+          <div class="brand-mark"></div>
+          <span>Inkclass</span>
+        </div>
+        <nav>
+          <button data-tab="join" class="nav-item active">수업 하기</button>
+          <button data-tab="records" class="nav-item">수업 기록</button>
+        </nav>
+        <div class="side-foot">
+          <div class="me" id="s-who"></div>
+          <button class="btn-link" id="s-logout">로그아웃</button>
+        </div>
+      </aside>
+      <section class="main">
+        <div id="tab-content"></div>
+      </section>
+    </div>
+  </template>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

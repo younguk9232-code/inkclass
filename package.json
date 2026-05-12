@@ -1,0 +1,13 @@
+{
+  "name": "inkclass",
+  "version": "1.0.0",
+  "description": "Interactive edtech — slide sync, ink, live class.",
+  "private": true,
+  "scripts": {
+    "dev": "python3 -m http.server 5173",
+    "deploy": "vercel deploy --prod --yes",
+    "deploy:preview": "vercel deploy --yes",
+    "deploy:cf": "wrangler pages deploy . --project-name inkclass",
+    "supabase:push": "supabase db push --file db/schema.sql"
+  }
+}
