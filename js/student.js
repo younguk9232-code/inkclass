@@ -61,8 +61,10 @@ function viewJoin(me) {
       el("button", { class: "btn btn-primary", onClick: () => {
         const code = (wrap.querySelector("#code-input").value || "").toUpperCase().trim();
         if (!code) return;
-        const target = store.state.sessions.find(s => s.status === "live" && (s.joinCode || "").toUpperCase() === code);
-        if (!target) { alert("해당 코드의 진행 중인 수업을 찾지 못했어요."); return; }
+        const teacher = store.findTeacherByCode(code);
+        if (!teacher) { alert("해당 코드의 선생님을 찾지 못했어요. 코드를 다시 확인해 주세요."); return; }
+        const target = store.state.sessions.find(s => s.teacherId === teacher.id && s.status === "live");
+        if (!target) { alert(`${teacher.name} 선생님이 현재 진행 중인 수업이 없어요.`); return; }
         joinSession(target, me);
       } }, "입장"),
     ]),
@@ -84,7 +86,7 @@ function viewJoin(me) {
     const teacher = store.state.teachers.find(t => t.id === s.teacherId);
     const card = el("div", { class: "card" }, [
       el("h3", {}, s.title),
-      el("div", { class: "meta" }, `${teacher?.name || "선생님"} · ${fmtDate(s.startedAt)}${s.joinCode ? ` · 코드 ${s.joinCode}` : ""}`),
+      el("div", { class: "meta" }, `${teacher?.name || "선생님"} · ${fmtDate(s.startedAt)}${teacher?.joinCode ? ` · 코드 ${teacher.joinCode}` : ""}`),
       el("div", { class: "actions" }, [
         el("button", { class: "btn btn-tiny btn-primary", onClick: () => joinSession(s, me) }, "입장"),
       ]),

@@ -12,6 +12,15 @@ initCloud().then(ok => {
   else console.info("Inkclass: local mode (Supabase not configured)");
 });
 
+// 마이그레이션: 기존 교사 중 joinCode 없는 사람에게 영구 코드 발급
+(function ensureTeacherCodes() {
+  let changed = false;
+  (store.state.teachers || []).forEach(t => {
+    if (!t.joinCode) { t.joinCode = store.newJoinCode(); changed = true; }
+  });
+  if (changed) store.set(s => s);
+})();
+
 // Landing
 route("/", () => {
   const v = template("tpl-landing");
@@ -32,11 +41,17 @@ route("/teacher-login", () => {
     if (!name || !pw) { err.textContent = "이름과 비밀번호를 입력해 주세요."; return; }
     let t = store.state.teachers.find(x => x.name === name);
     if (!t) {
-      t = { id: store.newId("t"), name, password: pw };
+      t = { id: store.newId("t"), name, password: pw, joinCode: store.newJoinCode() };
       store.set(s => s.teachers.push(t));
     } else if (t.password !== pw) {
       err.textContent = "비밀번호가 일치하지 않습니다.";
       return;
+    } else if (!t.joinCode) {
+      // 레거시 계정: 영구 코드 부여
+      store.set(s => {
+        const x = s.teachers.find(y => y.id === t.id);
+        if (x && !x.joinCode) x.joinCode = store.newJoinCode();
+      });
     }
     store.set(s => s.whoTeacher = t.id);
     go("/teacher");
@@ -67,8 +82,10 @@ route("/student-login", (params) => {
     if (!code) { err.textContent = "수업 코드를 입력해 주세요. (선생님이 화면 또는 QR로 안내한 6자리)"; return; }
     if (!grade || !classNum || !num || !name) { err.textContent = "학년·반·번호·이름을 모두 입력해 주세요."; return; }
 
-    const target = store.state.sessions.find(s => s.status === "live" && (s.joinCode || "").toUpperCase() === code);
-    if (!target) { err.textContent = "해당 코드의 진행 중인 수업을 찾지 못했어요. 코드를 다시 확인해 주세요."; return; }
+    const teacher = store.findTeacherByCode(code);
+    if (!teacher) { err.textContent = "해당 코드의 선생님을 찾지 못했어요. 코드를 다시 확인해 주세요."; return; }
+    const target = store.state.sessions.find(s => s.teacherId === teacher.id && s.status === "live");
+    if (!target) { err.textContent = `${teacher.name} 선생님이 현재 진행 중인 수업이 없어요. 수업이 시작되면 다시 입장해 주세요.`; return; }
 
     let me = store.state.students.find(x => x.grade === grade && x.classNum === classNum && x.num === num && x.name === name);
     if (!me) {
@@ -85,13 +102,13 @@ route("/student-login", (params) => {
   };
 });
 
-// QR-driven student join: /student/join?c=<joinCode> (legacy: ?t=<teacherId>)
+// QR-driven student join: /student/join?c=<teacherJoinCode> (legacy: ?t=<teacherId>)
 route("/student/join", (params) => {
   let code = (params.c || "").toUpperCase();
-  // 레거시 t= 파라미터 지원: 해당 교사의 LIVE 세션 코드를 찾아 사용
+  // 레거시 t= 파라미터 지원: 해당 교사의 코드 그대로 사용
   if (!code && params.t) {
-    const live = store.state.sessions.find(s => s.teacherId === params.t && s.status === "live");
-    if (live) code = (live.joinCode || "").toUpperCase();
+    const tt = store.state.teachers.find(t => t.id === params.t);
+    if (tt) code = (tt.joinCode || "").toUpperCase();
   }
 
   const me = store.state.students.find(x => x.id === store.state.whoStudent);
@@ -100,8 +117,9 @@ route("/student/join", (params) => {
     go("/student-login");
     return;
   }
-  const target = code
-    ? store.state.sessions.find(s => s.status === "live" && (s.joinCode || "").toUpperCase() === code)
+  const teacher = code ? store.findTeacherByCode(code) : null;
+  const target = teacher
+    ? store.state.sessions.find(s => s.teacherId === teacher.id && s.status === "live")
     : store.state.sessions.find(s => s.status === "live"); // 코드 없으면 진행 중인 아무 LIVE
   if (target) {
     if (!target.participants.includes(me.id)) {
@@ -110,7 +128,9 @@ route("/student/join", (params) => {
     }
     go("/student/live/" + target.id);
   } else {
-    alert("해당 코드의 진행 중인 수업이 없습니다.\n선생님께 코드를 확인해 주세요.");
+    alert(teacher
+      ? `${teacher.name} 선생님이 현재 진행 중인 수업이 없습니다.`
+      : "해당 코드의 선생님을 찾지 못했어요.\n코드를 다시 확인해 주세요.");
     go("/student");
   }
 });

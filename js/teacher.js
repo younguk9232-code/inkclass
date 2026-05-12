@@ -472,7 +472,6 @@ function startLessonDialog(lesson, teacher) {
             s.sessions.forEach(ss => { if (ss.teacherId === teacher.id && ss.status === "live") ss.status = "stopped"; });
             const session = {
               id: store.newId("sess"),
-              joinCode: store.newJoinCode(),
               lessonId: lesson.id,
               teacherId: teacher.id,
               title: lesson.title,
@@ -517,9 +516,9 @@ function liveClass(wrap, session, teacher) {
     el("div", { class: "row-flex" }, [
       el("h1", {}, session.title),
       el("span", { class: "tag live" }, "LIVE"),
-      session.joinCode ? el("span", { class: "join-code", title: "학생 입장용 수업 코드" }, [
+      teacher.joinCode ? el("span", { class: "join-code", title: "학생 입장용 수업 코드 (교사 고유)" }, [
         el("span", { class: "muted", style: { fontSize: "11px" } }, "수업 코드"),
-        el("strong", {}, session.joinCode),
+        el("strong", {}, teacher.joinCode),
       ]) : null,
       el("span", { class: "muted" }, `슬라이드 ${session.currentSlide + 1} / ${session.slidesSnapshot.length}`),
     ].filter(Boolean)),
@@ -735,9 +734,9 @@ function enterFocusMode(session, teacher) {
     // 상단
     const top = el("div", { class: "focus-top" }, [
       el("span", { class: "tag live" }, "수업 중"),
-      session.joinCode ? el("span", { class: "join-code small" }, [
+      teacher.joinCode ? el("span", { class: "join-code small" }, [
         el("span", { class: "muted", style: { fontSize: "10px" } }, "코드"),
-        el("strong", {}, session.joinCode),
+        el("strong", {}, teacher.joinCode),
       ]) : null,
       el("span", { class: "muted", style: { fontSize: "12px" } }, `${session.flow === "teacher" ? "교사 흐름" : "학생 흐름"} · ${modeLabel(slide.mode)}`),
       el("span", { class: "spacer" }),
@@ -1107,7 +1106,6 @@ function restartSession(session) {
     if (target) {
       target.status = "live";
       target.endedAt = null;
-      if (!target.joinCode) target.joinCode = store.newJoinCode();
     }
   });
   sync.emit({ type: "session-restart" });
@@ -1243,24 +1241,25 @@ function viewQR(teacher) {
   const wrap = el("div", {});
   wrap.appendChild(el("div", { class: "main-header" }, [el("h1", {}, "수업 접속 QR")]));
 
-  const live = store.state.sessions.find(s => s.teacherId === teacher.id && s.status === "live");
-  if (!live) {
-    wrap.appendChild(el("div", { class: "empty-state" }, [
-      el("h4", {}, "진행 중인 수업이 없습니다"),
-      "수업 자료에서 [수업 시작]을 누르면 자동으로 6자리 코드와 QR이 발급됩니다.",
-    ]));
-    return wrap;
+  // 교사 고유 코드가 없으면 발급(레거시 보호)
+  if (!teacher.joinCode) {
+    store.set(s => { const t = s.teachers.find(x => x.id === teacher.id); if (t && !t.joinCode) t.joinCode = store.newJoinCode(); });
+    teacher = store.state.teachers.find(x => x.id === teacher.id);
   }
 
-  const url = `${location.origin}${location.pathname}#/student/join?c=${encodeURIComponent(live.joinCode || "")}`;
+  const live = store.state.sessions.find(s => s.teacherId === teacher.id && s.status === "live");
+  const url = `${location.origin}${location.pathname}#/student/join?c=${encodeURIComponent(teacher.joinCode || "")}`;
+  const statusLine = live
+    ? `${teacher.name} 선생님 · 진행 중: ${live.title}`
+    : `${teacher.name} 선생님 · 진행 중인 수업 없음 (코드는 항상 유효)`;
   const card = el("div", { class: "qr-card" }, [
-    el("div", { style: { fontSize: "13px", color: "var(--muted)" } }, `${teacher.name} 선생님 · ${live.title}`),
-    el("div", { class: "code-display" }, live.joinCode || "—"),
-    el("div", { class: "muted", style: { fontSize: "12px" } }, "학생들이 위 코드를 입력하거나, 아래 QR을 스캔하면 입장합니다."),
+    el("div", { style: { fontSize: "13px", color: "var(--muted)" } }, statusLine),
+    el("div", { class: "code-display" }, teacher.joinCode || "—"),
+    el("div", { class: "muted", style: { fontSize: "12px" } }, "학생들이 이 코드를 입력하거나 QR을 스캔하면, 현재 진행 중인 수업에 자동 입장합니다."),
     el("canvas", { id: "qr" }),
     el("div", { class: "url" }, url),
     el("div", { class: "row-flex", style: { gap: "6px" } }, [
-      el("button", { class: "btn btn-tiny", onClick: () => { navigator.clipboard.writeText(live.joinCode || ""); alert("수업 코드를 복사했어요."); } }, "코드 복사"),
+      el("button", { class: "btn btn-tiny", onClick: () => { navigator.clipboard.writeText(teacher.joinCode || ""); alert("수업 코드를 복사했어요."); } }, "코드 복사"),
       el("button", { class: "btn btn-tiny", onClick: () => { navigator.clipboard.writeText(url); alert("접속 URL을 복사했어요."); } }, "URL 복사"),
     ]),
   ]);
