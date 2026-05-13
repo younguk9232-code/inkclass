@@ -168,6 +168,15 @@ function logErr(label, err) {
   if (err) console.error(`[cloud] ${label} 실패:`, err.message || err, err);
 }
 
+// 이름으로 교사를 클라우드에서 직접 조회 (로그인 시 로컬 stale 회피)
+export async function cloudFetchTeacherByName(name) {
+  if (!isCloud) return null;
+  const { data, error } = await supa.from("teachers").select("*").eq("name", name).maybeSingle();
+  logErr("fetchTeacherByName", error);
+  if (!data) return null;
+  return { id: data.id, name: data.name, passwordHash: data.password_hash || "", joinCode: data.join_code || null };
+}
+
 export async function cloudUpsertTeacher(t) {
   if (!isCloud) return t;
   // passwordHash가 있으면 그대로, 아니면 password 평문을 해시

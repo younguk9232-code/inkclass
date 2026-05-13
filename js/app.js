@@ -4,7 +4,7 @@ import { mount, template, $, $$ } from "./ui.js";
 import { store } from "./store.js";
 import { teacherDashboard, editorView } from "./teacher.js";
 import { studentDashboard, studentLive } from "./student.js";
-import { initCloud, cloudEnabled, cloudUpsertTeacher, cloudUpsertStudent, cloudAddParticipant, sha } from "./cloud.js";
+import { initCloud, cloudEnabled, cloudUpsertTeacher, cloudUpsertStudent, cloudAddParticipant, cloudFetchTeacherByName, sha } from "./cloud.js";
 
 // Kick off cloud sync (no-op if env not configured)
 initCloud().then(ok => {
@@ -37,38 +37,48 @@ route("/teacher-login", () => {
     const name = v.querySelector("#t-name").value.trim();
     const pw = v.querySelector("#t-pw").value;
     const err = v.querySelector("#t-err");
+    const btn = v.querySelector("#t-submit");
     err.textContent = "";
     if (!name || !pw) { err.textContent = "이름과 비밀번호를 입력해 주세요."; return; }
-    const inputHash = await sha(pw);
-    let t = store.state.teachers.find(x => x.name === name);
-    if (!t) {
-      // 신규 가입
-      t = { id: store.newId("t"), name, passwordHash: inputHash, joinCode: store.newJoinCode() };
-      store.set(s => s.teachers.push(t));
-      cloudUpsertTeacher(t).catch(() => {});
-    } else {
-      // 기존 계정: 해시 비교 (legacy password 평문도 fallback)
-      const storedHash = t.passwordHash || (t.password ? await sha(t.password) : "");
-      if (storedHash !== inputHash) {
-        err.textContent = "비밀번호가 일치하지 않습니다.";
-        return;
+    btn.disabled = true;
+    try {
+      const inputHash = await sha(pw);
+      // 🔑 클라우드 모드: 로컬 stale 회피 위해 항상 클라우드에서 직접 조회
+      let cloudT = null;
+      if (cloudEnabled()) {
+        cloudT = await cloudFetchTeacherByName(name).catch(() => null);
       }
-      // 누락된 필드 보강 (legacy 마이그레이션)
-      let needSync = false;
-      store.set(s => {
-        const x = s.teachers.find(y => y.id === t.id);
-        if (!x) return;
-        if (!x.passwordHash) { x.passwordHash = inputHash; needSync = true; }
-        if (x.password) { delete x.password; needSync = true; }
-        if (!x.joinCode) { x.joinCode = store.newJoinCode(); needSync = true; }
-      });
-      if (needSync) {
-        const updated = store.state.teachers.find(x => x.id === t.id);
-        cloudUpsertTeacher(updated).catch(() => {});
+      let t = cloudT || store.state.teachers.find(x => x.name === name);
+
+      if (!t) {
+        // 신규 가입
+        t = { id: store.newId("t"), name, passwordHash: inputHash, joinCode: store.newJoinCode() };
+        store.set(s => s.teachers.push(t));
+        await cloudUpsertTeacher(t).catch(() => {});
+      } else {
+        // 기존 계정: 해시 비교 (legacy password 평문도 fallback)
+        const storedHash = t.passwordHash || (t.password ? await sha(t.password) : "");
+        if (storedHash !== inputHash) {
+          err.textContent = "비밀번호가 일치하지 않습니다.";
+          return;
+        }
+        // 누락된 필드 보강 (legacy 마이그레이션) + 로컬 store 동기화
+        if (!t.joinCode) t.joinCode = store.newJoinCode();
+        store.set(s => {
+          const i = s.teachers.findIndex(y => y.id === t.id);
+          if (i >= 0) {
+            s.teachers[i] = { id: t.id, name: t.name, passwordHash: storedHash, joinCode: t.joinCode };
+          } else {
+            s.teachers.push({ id: t.id, name: t.name, passwordHash: storedHash, joinCode: t.joinCode });
+          }
+        });
+        await cloudUpsertTeacher({ ...t, passwordHash: storedHash }).catch(() => {});
       }
+      store.set(s => s.whoTeacher = t.id);
+      go("/teacher");
+    } finally {
+      btn.disabled = false;
     }
-    store.set(s => s.whoTeacher = t.id);
-    go("/teacher");
   };
 });
 
