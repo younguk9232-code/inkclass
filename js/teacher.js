@@ -711,14 +711,16 @@ function enterFocusMode(session, teacher) {
   function switchFlow(f) {
     session.flow = f;
     store.set(s => s);
+    cloudUpsertSession(session).catch(() => {});
     sync.emit({ type: "flow-change" });
-    refreshChrome(); // viewer는 유지 (slide·scope 그대로)
+    refreshChrome();
   }
   function switchMode(m) {
     currentSlide().mode = m;
     store.set(s => s);
+    cloudUpsertSession(session).catch(() => {});
     sync.emit({ type: "mode-change" });
-    render(); // scope가 바뀔 수 있으므로 재마운트 가능
+    render();
   }
   function clearCurrent() {
     const slide = currentSlide();

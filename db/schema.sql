@@ -88,9 +88,13 @@ create table slide_records (
   scope_id text,
   strokes jsonb not null default '[]'::jsonb,
   texts jsonb not null default '[]'::jsonb,
+  last_writer text,
   updated_at timestamptz not null default now(),
   unique (session_id, slide_id, scope, scope_id)
 );
+-- 기존 테이블 마이그레이션
+alter table slide_records add column if not exists last_writer text;
+alter table sessions add column if not exists last_writer text;
 create index idx_records_session on slide_records(session_id);
 create index idx_records_lookup on slide_records(session_id, slide_id, scope, scope_id);
 

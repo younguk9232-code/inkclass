@@ -9,6 +9,21 @@ let supa = null;
 let liveCh = null;     // realtime channel for the current live session
 let isCloud = false;
 
+// 🆔 이 클라이언트의 고유 식별자 (탭 단위로 유지). 자기 자신의 echo 무시용.
+const CLIENT_ID = (() => {
+  try {
+    let id = sessionStorage.getItem("inkclass:cid");
+    if (!id) {
+      id = "cli_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      sessionStorage.setItem("inkclass:cid", id);
+    }
+    return id;
+  } catch (_) {
+    return "cli_" + Math.random().toString(36).slice(2, 10);
+  }
+})();
+export function clientId() { return CLIENT_ID; }
+
 export function cloudEnabled() { return isCloud; }
 
 export async function initCloud() {
@@ -148,15 +163,24 @@ async function migrateLocalToCloud() {
 }
 
 function subscribeRealtime() {
-  // Subscribe to all mutating tables and refresh on change.
   supa.channel("ink-global")
-    .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, refresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "slide_records" }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, refreshIfOther)
+    .on("postgres_changes", { event: "*", schema: "public", table: "slide_records" }, refreshIfOther)
     .on("postgres_changes", { event: "*", schema: "public", table: "session_participants" }, refresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "lessons" }, refresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "slides" }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "teachers" }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "students" }, refresh)
     .subscribe();
 }
+
+// 🚫 자기 자신이 마지막 writer면 refresh 하지 않음 (필기 끊김 방지의 핵심)
+function refreshIfOther(payload) {
+  const writer = payload?.new?.last_writer || payload?.old?.last_writer;
+  if (writer && writer === CLIENT_ID) return; // echo
+  refresh();
+}
+
 let _refreshTimer = null;
 function refresh() {
   clearTimeout(_refreshTimer);
@@ -215,6 +239,7 @@ export async function cloudUpsertSession(ss) {
     slides_snapshot: ss.slidesSnapshot, groups: ss.groups,
     started_at: new Date(ss.startedAt).toISOString(),
     ended_at: ss.endedAt ? new Date(ss.endedAt).toISOString() : null,
+    last_writer: CLIENT_ID,
   }, { onConflict: "id" });
   logErr("upsertSession", error);
 }
@@ -228,6 +253,7 @@ export async function cloudWriteRecord(sessionId, slideId, scope, scopeId, paylo
   const { error } = await supa.from("slide_records").upsert({
     session_id: sessionId, slide_id: slideId, scope, scope_id: scopeId,
     strokes: payload.strokes || [], texts: payload.texts || [],
+    last_writer: CLIENT_ID,
     updated_at: new Date().toISOString(),
   }, { onConflict: "session_id,slide_id,scope,scope_id" });
   logErr("writeRecord", error);
