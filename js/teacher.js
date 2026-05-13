@@ -638,7 +638,10 @@ function liveClass(wrap, session, teacher) {
   }
   function switchMode(m) {
     slide.mode = m;
+    // session.slidesSnapshot 안의 슬라이드 객체이므로, snapshot 자체가 변경됨.
+    // 클라우드의 sessions.slides_snapshot(jsonb) 갱신 → 학생 측 realtime 트리거
     store.set(s => s);
+    cloudUpsertSession(session).catch(() => {});
     sync.emit({ type: "mode-change" });
     rerender();
   }

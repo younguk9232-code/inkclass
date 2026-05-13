@@ -4,6 +4,7 @@ import { store, getActiveSession, findLesson, studentLabel } from "./store.js";
 import { sync } from "./sync.js";
 import { go } from "./router.js";
 import { renderSlide } from "./lesson-view.js";
+import { cloudUpsertStudent, cloudAddParticipant } from "./cloud.js";
 
 const TOOLS = [
   { id: "pen", label: "펜", icon: "M3 17l3.6-1 9.5-9.5a2 2 0 0 0-2.8-2.8L3.8 13.2 3 17z" },
@@ -102,6 +103,9 @@ function joinSession(session, me) {
     session.participants.push(me.id);
     store.set(s => s);
     sync.emit({ type: "student-join" });
+    // 클라우드에도 즉시 push (교사 측 실시간 반영)
+    cloudUpsertStudent(me).catch(() => {});
+    cloudAddParticipant(session.id, me.id).catch(() => {});
   }
   go("/student/live/" + session.id);
 }

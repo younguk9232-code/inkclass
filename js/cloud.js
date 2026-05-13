@@ -92,7 +92,12 @@ async function pullSnapshot() {
   }
 
   store.set(s => {
-    s.teachers = (teachers || []).map(t => ({ id: t.id, name: t.name, password: "" /* not synced */, joinCode: t.join_code || null }));
+    s.teachers = (teachers || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      passwordHash: t.password_hash || "",
+      joinCode: t.join_code || null,
+    }));
     s.students = (students || []).map(x => ({ id: x.id, grade: x.grade, classNum: x.class_num, num: x.num, name: x.name }));
     s.lessons = [...lessonMap.values()];
     s.sessions = [...sessionMap.values()];
@@ -165,7 +170,9 @@ function logErr(label, err) {
 
 export async function cloudUpsertTeacher(t) {
   if (!isCloud) return t;
-  const payload = { id: t.id, name: t.name, password_hash: await sha(t.password || "") };
+  // passwordHash가 있으면 그대로, 아니면 password 평문을 해시
+  const ph = t.passwordHash || (t.password ? await sha(t.password) : "");
+  const payload = { id: t.id, name: t.name, password_hash: ph };
   if (t.joinCode) payload.join_code = t.joinCode;
   const { data, error } = await supa.from("teachers").upsert(payload, { onConflict: "id" }).select().single();
   logErr("upsertTeacher", error);
@@ -217,7 +224,7 @@ export async function cloudWriteRecord(sessionId, slideId, scope, scopeId, paylo
   logErr("writeRecord", error);
 }
 
-async function sha(s) {
+export async function sha(s) {
   const buf = new TextEncoder().encode(s);
   const h = await crypto.subtle.digest("SHA-256", buf);
   return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("");
