@@ -38,32 +38,38 @@ export function renderSlide({ root, slide, lesson, session, scope, scopeId, read
   loadStrokes();
   renderTexts();
 
+  // ⚡ 클라우드 동기화 시 store.state.sessions 가 새 배열로 교체되므로,
+  // closure에 갇힌 session 대신 매번 fresh 객체를 찾는다.
+  function freshSession() {
+    if (!session || !session.id) return session;
+    return store.state.sessions.find(s => s.id === session.id) || session;
+  }
+
   function pathFor() {
-    // returns: { container, key } indicating where to read/write from in store
     if (scope === "edit") {
-      // Editor: write straight into lesson.slides[i].strokes / texts (a flat array)
       slide.strokes ||= [];
       slide.texts ||= [];
       return { strokes: slide.strokes, texts: slide.texts };
     }
-    if (!session) return { strokes: [], texts: [] };
-    session.records ||= {};
+    const ss = freshSession();
+    if (!ss) return { strokes: [], texts: [] };
+    ss.records ||= {};
     if (scope === "ppt") return { strokes: [], texts: [] };
     if (scope === "whole") {
-      session.records.__whole ||= {};
-      session.records.__whole[slide.id] ||= { strokes: [], texts: [] };
-      return session.records.__whole[slide.id];
+      ss.records.__whole ||= {};
+      ss.records.__whole[slide.id] ||= { strokes: [], texts: [] };
+      return ss.records.__whole[slide.id];
     }
     if (scope === "individual") {
-      session.records[scopeId] ||= {};
-      session.records[scopeId][slide.id] ||= { strokes: [], texts: [] };
-      return session.records[scopeId][slide.id];
+      ss.records[scopeId] ||= {};
+      ss.records[scopeId][slide.id] ||= { strokes: [], texts: [] };
+      return ss.records[scopeId][slide.id];
     }
     if (scope === "group") {
-      session.records.__groups ||= {};
-      session.records.__groups[scopeId] ||= {};
-      session.records.__groups[scopeId][slide.id] ||= { strokes: [], texts: [] };
-      return session.records.__groups[scopeId][slide.id];
+      ss.records.__groups ||= {};
+      ss.records.__groups[scopeId] ||= {};
+      ss.records.__groups[scopeId][slide.id] ||= { strokes: [], texts: [] };
+      return ss.records.__groups[scopeId][slide.id];
     }
     return { strokes: [], texts: [] };
   }

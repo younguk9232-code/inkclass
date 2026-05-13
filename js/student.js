@@ -107,7 +107,9 @@ function joinSession(session, me) {
 }
 
 export function studentLive({ id }) {
-  const session = store.state.sessions.find(x => x.id === id);
+  // ⚡ session 객체는 클라우드 동기화 시 통째로 교체되므로, 매번 fresh 조회.
+  const getSession = () => store.state.sessions.find(x => x.id === id);
+  let session = getSession();
   if (!session) { go("/student"); return; }
   const me = store.state.students.find(x => x.id === store.state.whoStudent);
   if (!me) { go("/"); return; }
@@ -124,15 +126,26 @@ export function studentLive({ id }) {
   let activeSize = 2;
   let viewer = null;
   let myIdx = session.currentSlide;
+  // 같은 슬라이드·같은 scope면 viewer 보존(캔버스 깜빡임 방지), 변하면 재마운트
+  let mountedKey = null;
+  let stageArea = null;
 
   const unsub = store.subscribe(() => {
-    // server-pushed updates: react to flow/slide change
-    if (session.flow === "teacher") myIdx = session.currentSlide;
+    const fresh = getSession();
+    if (!fresh) return;
+    session = fresh;
+    if (session.flow === "teacher") myIdx = Math.min(session.currentSlide, session.slidesSnapshot.length - 1);
     render();
   });
-  const unsync = sync.on(() => render());
+  const unsync = sync.on(() => {
+    const fresh = getSession();
+    if (fresh) session = fresh;
+    render();
+  });
 
   function render() {
+    // 매 render 시작마다 fresh
+    session = getSession() || session;
     const status = session.status;
     bar.innerHTML = "";
     bar.appendChild(el("div", { class: "brand small" }, [el("div", { class: "brand-mark" }), el("span", {}, "Inkclass")]));
@@ -179,8 +192,25 @@ export function studentLive({ id }) {
       stage.appendChild(tb);
     }
 
-    const stageArea = el("div", { class: "canvas-stage" });
-    stage.appendChild(stageArea);
+    // scope 미리 계산 (mountedKey 비교용)
+    const isPPT = slide.mode === "none";
+    const scope = slide.mode === "individual" ? "individual"
+      : slide.mode === "group" ? "group"
+      : "whole";
+    let scopeId = me.id;
+    if (scope === "group") {
+      const g = session.groups.find(g => g.memberIds.includes(me.id));
+      scopeId = g?.id || null;
+    }
+    const key = `${slide.id}|${scope}|${scopeId || "-"}|${isPPT ? "ro" : "rw"}`;
+
+    // stageArea: 동일 key면 보존, 다르면 새로
+    if (key !== mountedKey) {
+      stageArea = el("div", { class: "canvas-stage" });
+      stage.appendChild(stageArea);
+    } else if (stageArea) {
+      stage.appendChild(stageArea);
+    }
 
     // Slide nav (student-flow only)
     if (session.flow === "student") {
@@ -194,35 +224,30 @@ export function studentLive({ id }) {
       stage.appendChild(el("div", { class: "muted", style: { fontSize: "12px", textAlign: "center" } }, `슬라이드 ${myIdx + 1} / ${session.slidesSnapshot.length}`));
     }
 
-    // mount viewer
-    queueMicrotask(() => {
-      // PPT 모드: 학생은 교사 필기('whole')를 시청만 (readOnly). 전체/개별/그룹은 학생도 작성 가능.
-      const isPPT = slide.mode === "none";
-      const scope = slide.mode === "individual" ? "individual"
-        : slide.mode === "group" ? "group"
-        : "whole"; // none(PPT) & whole 모두 whole 캔버스를 본다 (PPT는 readOnly)
-      let scopeId = me.id;
-      if (scope === "group") {
-        const g = session.groups.find(g => g.memberIds.includes(me.id));
-        scopeId = g?.id;
-        if (!scopeId) {
-          // not yet assigned to group
-          stageArea.innerHTML = "";
-          stageArea.appendChild(el("div", { class: "empty-state" }, [
-            el("h4", {}, "모둠 배정을 기다리고 있어요"),
-            "교사가 모둠에 배정하면 자동으로 표시됩니다.",
-          ]));
-          return;
-        }
+    // viewer 마운트: 처음 또는 key 변경 시에만 재생성, 그 외엔 refresh만
+    if (key !== mountedKey) {
+      mountedKey = key;
+      if (scope === "group" && !scopeId) {
+        stageArea.innerHTML = "";
+        stageArea.appendChild(el("div", { class: "empty-state" }, [
+          el("h4", {}, "모둠 배정을 기다리고 있어요"),
+          "교사가 모둠에 배정하면 자동으로 표시됩니다.",
+        ]));
+        viewer = null;
+      } else {
+        viewer = renderSlide({ root: stageArea, slide, session, scope, scopeId, readOnly: isPPT });
+        viewer.setTool(activeTool); viewer.setColor(activeColor); viewer.setSize(activeSize);
       }
-      viewer = renderSlide({
-        root: stageArea, slide, session, scope, scopeId,
-        readOnly: isPPT,
-      });
-      viewer.setTool(activeTool); viewer.setColor(activeColor); viewer.setSize(activeSize);
-    });
+    } else if (viewer) {
+      // 같은 슬라이드·scope — 캔버스 보존, strokes/texts만 다시 로드 (다른 학생의 필기 반영)
+      viewer.refresh();
+    }
   }
-  function slideAt() { return session.slidesSnapshot[session.flow === "teacher" ? session.currentSlide : myIdx]; }
+  function slideAt() {
+    const ss = getSession() || session;
+    const idx = ss.flow === "teacher" ? ss.currentSlide : myIdx;
+    return ss.slidesSnapshot[Math.max(0, Math.min(idx, ss.slidesSnapshot.length - 1))];
+  }
   render();
 }
 
