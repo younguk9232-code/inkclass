@@ -162,7 +162,11 @@ async function migrateLocalToCloud() {
   console.info("Inkclass: migration complete.");
 }
 
+let _subscribed = false;
 function subscribeRealtime() {
+  // Supabase 채널은 한 번만 subscribe 가능. 중복 호출 시 throw.
+  if (_subscribed) return;
+  _subscribed = true;
   supa.channel("ink-global")
     .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, refreshIfOther)
     .on("postgres_changes", { event: "*", schema: "public", table: "slide_records" }, refreshIfOther)

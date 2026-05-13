@@ -6,8 +6,8 @@
   <title>Inkclass — 인터랙티브 에듀테크</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
-  <link rel="stylesheet" href="./styles.css?v=1.7.0" />
-  <script src="./env.js?v=1.7.0"></script>
+  <link rel="stylesheet" href="./styles.css?v=1.7.1" />
+  <script src="./env.js?v=1.7.1"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
@@ -40,8 +40,8 @@
       <div class="auth-card">
         <h2>교사 로그인</h2>
         <p class="muted">이름과 비밀번호를 입력하세요. 처음이라면 자동으로 등록됩니다.</p>
-        <label>이름<input id="t-name" placeholder="예) 김선생" /></label>
-        <label>비밀번호<input id="t-pw" type="password" placeholder="••••••" /></label>
+        <label>이름<input id="t-name" placeholder="예) 김선생" autocomplete="off" /></label>
+        <label>비밀번호<input id="t-pw" type="password" placeholder="••••••" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="latin" /></label>
         <button class="btn btn-primary" id="t-submit">입장</button>
         <p class="error" id="t-err"></p>
       </div>
@@ -113,6 +113,6 @@
       </section>
     </div>
   </template>
-  <script type="module" src="./js/app.js?v=1.7.0"></script>
+  <script type="module" src="./js/app.js?v=1.7.1"></script>
 </body>
 </html>
