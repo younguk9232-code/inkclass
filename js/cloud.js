@@ -235,16 +235,25 @@ export async function cloudInsertLesson(l) {
     logErr(`upsertSlide#${i}`, e2);
   }
 }
+// 일부 컬럼(last_writer)이 DB에 없을 수도 있으므로 동적으로 시도 후 fallback
+let _sessionsHasLastWriter = true;
+let _recordsHasLastWriter = true;
+
 export async function cloudUpsertSession(ss) {
   if (!isCloud) return;
-  const { error } = await supa.from("sessions").upsert({
+  const base = {
     id: ss.id, lesson_id: ss.lessonId, teacher_id: ss.teacherId, title: ss.title,
     status: ss.status, flow: ss.flow, current_slide: ss.currentSlide,
     slides_snapshot: ss.slidesSnapshot, groups: ss.groups,
     started_at: new Date(ss.startedAt).toISOString(),
     ended_at: ss.endedAt ? new Date(ss.endedAt).toISOString() : null,
-    last_writer: CLIENT_ID,
-  }, { onConflict: "id" });
+  };
+  const payload = _sessionsHasLastWriter ? { ...base, last_writer: CLIENT_ID } : base;
+  let { error } = await supa.from("sessions").upsert(payload, { onConflict: "id" });
+  if (error && (error.code === "PGRST204" || /last_writer/.test(error.message || ""))) {
+    _sessionsHasLastWriter = false;
+    ({ error } = await supa.from("sessions").upsert(base, { onConflict: "id" }));
+  }
   logErr("upsertSession", error);
 }
 export async function cloudAddParticipant(sid, stuId) {
@@ -254,12 +263,17 @@ export async function cloudAddParticipant(sid, stuId) {
 }
 export async function cloudWriteRecord(sessionId, slideId, scope, scopeId, payload) {
   if (!isCloud) return;
-  const { error } = await supa.from("slide_records").upsert({
+  const base = {
     session_id: sessionId, slide_id: slideId, scope, scope_id: scopeId,
     strokes: payload.strokes || [], texts: payload.texts || [],
-    last_writer: CLIENT_ID,
     updated_at: new Date().toISOString(),
-  }, { onConflict: "session_id,slide_id,scope,scope_id" });
+  };
+  const body = _recordsHasLastWriter ? { ...base, last_writer: CLIENT_ID } : base;
+  let { error } = await supa.from("slide_records").upsert(body, { onConflict: "session_id,slide_id,scope,scope_id" });
+  if (error && (error.code === "PGRST204" || /last_writer/.test(error.message || ""))) {
+    _recordsHasLastWriter = false;
+    ({ error } = await supa.from("slide_records").upsert(base, { onConflict: "session_id,slide_id,scope,scope_id" }));
+  }
   logErr("writeRecord", error);
 }
 
