@@ -19,8 +19,22 @@ function load() {
   } catch (e) { return structuredClone(initial); }
 }
 function save(state) {
-  // strip very large data urls? keep as-is for now
-  localStorage.setItem(KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch (e) {
+    // localStorage 한도(보통 5MB)를 base64 슬라이드 이미지 등으로 초과한 경우.
+    // 큰 이미지 제외하고 메타데이터만이라도 저장 시도.
+    try {
+      const slim = JSON.parse(JSON.stringify(state));
+      const stripBg = arr => Array.isArray(arr) && arr.forEach(s => { if (s && typeof s.bg === "string" && s.bg.length > 1024) s.bg = null; });
+      (slim.lessons || []).forEach(l => stripBg(l.slides));
+      (slim.sessions || []).forEach(ss => stripBg(ss.slidesSnapshot));
+      localStorage.setItem(KEY, JSON.stringify(slim));
+      console.warn("[store] localStorage 한도 초과 — 슬라이드 배경 이미지를 로컬 저장에서 제외 (클라우드엔 유지)");
+    } catch (e2) {
+      console.warn("[store] save 실패 (메모리 상태만 유지):", e2);
+    }
+  }
 }
 
 export const store = {

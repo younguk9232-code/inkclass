@@ -235,9 +235,14 @@ export async function cloudInsertLesson(l) {
     logErr(`upsertSlide#${i}`, e2);
   }
 }
-// 일부 컬럼(last_writer)이 DB에 없을 수도 있으므로 동적으로 시도 후 fallback
-let _sessionsHasLastWriter = true;
-let _recordsHasLastWriter = true;
+// 일부 컬럼(last_writer)이 DB에 없을 수도 있으므로 동적으로 시도 후 fallback.
+// 한 번 fail 하면 localStorage에 결과 캐시 → 새로고침해도 첫 시도부터 우회.
+let _sessionsHasLastWriter = localStorage.getItem("inkclass:lw_sessions") !== "no";
+let _recordsHasLastWriter = localStorage.getItem("inkclass:lw_records") !== "no";
+function markNoLW(which) {
+  if (which === "sessions") { _sessionsHasLastWriter = false; try { localStorage.setItem("inkclass:lw_sessions", "no"); } catch (_) {} }
+  if (which === "records") { _recordsHasLastWriter = false; try { localStorage.setItem("inkclass:lw_records", "no"); } catch (_) {} }
+}
 
 export async function cloudUpsertSession(ss) {
   if (!isCloud) return;
@@ -251,7 +256,7 @@ export async function cloudUpsertSession(ss) {
   const payload = _sessionsHasLastWriter ? { ...base, last_writer: CLIENT_ID } : base;
   let { error } = await supa.from("sessions").upsert(payload, { onConflict: "id" });
   if (error && (error.code === "PGRST204" || /last_writer/.test(error.message || ""))) {
-    _sessionsHasLastWriter = false;
+    markNoLW("sessions");
     ({ error } = await supa.from("sessions").upsert(base, { onConflict: "id" }));
   }
   logErr("upsertSession", error);
@@ -271,7 +276,7 @@ export async function cloudWriteRecord(sessionId, slideId, scope, scopeId, paylo
   const body = _recordsHasLastWriter ? { ...base, last_writer: CLIENT_ID } : base;
   let { error } = await supa.from("slide_records").upsert(body, { onConflict: "session_id,slide_id,scope,scope_id" });
   if (error && (error.code === "PGRST204" || /last_writer/.test(error.message || ""))) {
-    _recordsHasLastWriter = false;
+    markNoLW("records");
     ({ error } = await supa.from("slide_records").upsert(base, { onConflict: "session_id,slide_id,scope,scope_id" }));
   }
   logErr("writeRecord", error);
